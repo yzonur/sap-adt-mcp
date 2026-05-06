@@ -7,8 +7,10 @@
 > from a chat window or an autonomous agent. No add-on installation on the SAP
 > stack required.
 
+[![npm version](https://img.shields.io/npm/v/claude-for-abap.svg)](https://www.npmjs.com/package/claude-for-abap)
 [![CI](https://github.com/yzonur/claude-for-abap/actions/workflows/ci.yml/badge.svg)](https://github.com/yzonur/claude-for-abap/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/node/v/claude-for-abap.svg)](https://nodejs.org)
 
 ---
 
