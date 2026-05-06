@@ -1,0 +1,7 @@
+node_modules/
+config.json
+*.log
+.env
+
+# Local digests / scratch outputs from scripts
+*-digest.json

@@ -1,0 +1,31 @@
+{
+  "defaultSystem": "DEV",
+  "readOnly": false,
+  "systems": {
+    "DEV": {
+      "host": "https://sap-dev.example.com:44300",
+      "client": "100",
+      "language": "EN",
+      "user": "DEVELOPER",
+      "password": "env:SAP_DEV_PASSWORD",
+      "rejectUnauthorized": false
+    },
+    "QAS": {
+      "host": "https://sap-qas.example.com:44300",
+      "client": "200",
+      "language": "EN",
+      "user": "DEVELOPER",
+      "password": "env:SAP_QAS_PASSWORD",
+      "rejectUnauthorized": true
+    },
+    "PRD": {
+      "host": "https://sap-prd.example.com:44300",
+      "client": "300",
+      "language": "EN",
+      "user": "READONLY",
+      "password": "env:SAP_PRD_PASSWORD",
+      "rejectUnauthorized": true,
+      "readOnly": true
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "name": "claude-for-abap",
+  "version": "0.3.0",
+  "description": "MCP server giving Claude live access to SAP systems via ADT (ABAP Development Tools) REST. Read source, search, run syntax checks, and edit ABAP objects from any MCP-compatible client.",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "claude-for-abap": "src/server.js",
+    "sap-adt-mcp": "src/server.js"
+  },
+  "files": [
+    "src",
+    "config.example.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"test/*.test.js\"",
+    "lint": "eslint src test"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "anthropic",
+    "sap",
+    "abap",
+    "adt",
+    "abap-development-tools",
+    "ai-agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yzonur/claude-for-abap.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yzonur/claude-for-abap/issues"
+  },
+  "homepage": "https://github.com/yzonur/claude-for-abap#readme",
+  "author": "yzonur",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "undici": "^8.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.3.0",
+    "globals": "^17.6.0"
+  }
+}
