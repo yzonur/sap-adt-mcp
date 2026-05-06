@@ -1,0 +1,14 @@
+# Normalize all text files to LF in the repository.
+* text=auto eol=lf
+
+# Always treat these as text regardless of platform.
+*.js text
+*.mjs text
+*.json text
+*.md text
+*.yml text
+*.yaml text
+*.example text
+
+# Lockfiles should match generator output exactly.
+package-lock.json text eol=lf
