@@ -19,7 +19,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test \"test/*.test.js\"",
+    "test": "node --test test/adt-error.test.js test/diff.test.js test/node-structure.test.js test/object-create.test.js test/object-references.test.js test/object-uris.test.js",
     "lint": "eslint src test"
   },
   "keywords": [
