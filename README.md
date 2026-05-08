@@ -266,14 +266,38 @@ Friendly aliases (any of either column work):
 | behaviordef / bdef | BDEF |
 | messageclass / msag | MSAG |
 
-## Clean Core prompts
+## Clean Core: prompts + reference
 
-The server exposes five MCP prompts that encode SAP's Clean Core
-extensibility framework. They surface in MCP-compatible clients (Claude
-Desktop, Claude Code, …) as user-invokable slash commands. **Nothing
-auto-fires** — Clean Core is an S/4HANA discipline and explicitly does not
-apply to ECC; every prompt body starts with an applicability check that
-backs off if the target system is ECC.
+The server ships an opt-in **Clean Core** layer for SAP S/4HANA work.
+There are two pieces, and they are deliberately separate:
+
+- **Five MCP prompts** (`src/prompts.js`) — the operational surface. The
+  user invokes them as slash commands. Each one pairs a slice of the
+  Clean Core framework with the relevant `adt_*` tools so the model can
+  act on a real system, not just lecture about levels.
+- **Long-form reference** ([`skills/abap-clean-core/`](skills/abap-clean-core/))
+  — the framework's full text: Stay Clean / Get Clean playbook, A/B/C/D
+  level deep-dive, Cloudification Repository state semantics, ABAP Cloud
+  allowed/forbidden lists, the SAP Application Extension Methodology
+  (3 phases), governance practices, KPI calculations, ATC exemption
+  process. Read once, link to it from PRs, hand to a new team member.
+  The prompts above quote what they need; the reference is everything
+  else.
+
+### Design choices
+
+- **Opt-in, not auto-firing.** Clean Core is an S/4HANA discipline. ECC
+  developers should not have it imposed on them. Nothing fires unless the
+  user types the slash command.
+- **ECC applicability check baked into every prompt.** The first thing
+  each prompt body asks the model to do is verify the target system is
+  S/4HANA. On ECC, it backs off and offers help in classic-ABAP idioms
+  with no level labels.
+- **Tone is descriptive, not judgmental.** "I know it's Level D, just
+  ship it" is honored. The agent ships, marks the level, sketches the
+  Level A refactor for later, and moves on.
+
+### The prompts
 
 In Claude Code (assuming you registered the server as `sap-adt`), the
 exact commands are:
@@ -295,10 +319,70 @@ prefix changes accordingly (`/mcp__cc__clean_core_grade`).
 In Claude Desktop, prompts appear in the slash-command picker — same
 naming.
 
-For the long-form reference material (Stay Clean / Get Clean playbook,
-A/B/C/D level deep-dive, Cloudification Repository state semantics, ABAP
-Cloud allowed/forbidden lists, decision framework, KPI calculations), see
-[`skills/abap-clean-core/`](skills/abap-clean-core).
+### Argument flow examples
+
+Atomic prompts (`grade`, `review`) take all their arguments inline and
+return a structured analysis:
+
+```
+You: /mcp__sap-adt__clean_core_grade object:ZCL_PRICING type:class system:DEV
+Agent: → adt_get_source { ... }
+       → adt_run_atc { ... }
+       Verdict: Level C. Two SELECTs from MARA without using the released
+       I_Product view; one CALL FUNCTION to internal FM RV_PRICE_PRINT.
+       Refactor sketch: replace SELECT with `from I_Product`; encapsulate
+       the RV_PRICE_PRINT call in a Z-class so the dependency is localised.
+```
+
+Mode-loading prompts (`refactor`, `create`, `design`) optionally take a
+seed; without one, they wait for the user's natural-language follow-up:
+
+```
+You: /mcp__sap-adt__clean_core_create
+Agent: I'm in Clean Core CREATE mode (Level A by default). What do you
+       want to build, on which package and system?
+You:   A small Fiori list-report of overdue invoices, package ZFIN_REPORTS,
+       system DEV.
+Agent: Plan: a CDS view projecting I_OperationalAcctgDocItemCube for items
+       with NetDueDate < today; a behavior definition; a service binding
+       exposing it to Fiori Elements list-report. Three objects. Confirm?
+```
+
+Or with a seed argument so the request is one-shot:
+
+```
+You: /mcp__sap-adt__clean_core_create requirement:"Fiori list-report of
+     overdue invoices" package:ZFIN_REPORTS system:DEV
+```
+
+### Read the long-form reference
+
+[`skills/abap-clean-core/`](skills/abap-clean-core/) is the canonical
+source for everything the prompts quote and more. If you're setting up
+Clean Core governance for a real program — KPI baselines, ATC exemption
+discipline, maturity assessment, on-stack vs side-by-side trade-offs at
+the architecture level — that's where the depth lives.
+
+The directory is structured as one entry point (`SKILL.md`) plus four
+deep-dive files in `references/`:
+
+- `references/levels-detailed.md` — Cloudification Repository state
+  values, released local vs released remote APIs, reclassification
+  dynamics, per-anti-pattern remediation
+- `references/decision-framework.md` — fit-to-standard, the SAP
+  Application Extension Methodology in detail, on-stack vs side-by-side
+  triggers, hybrid patterns, worked scenarios
+- `references/governance.md` — Stay Clean / Get Clean playbook, the four
+  KPIs and how to compute them, ATC exemption process, maturity
+  assessment, multi-year roadmap
+- `references/abap-cloud-rules.md` — full allowed/forbidden lists, RAP /
+  CDS / business object interfaces / Custom Fields, prebuilt services,
+  classic-to-cloud migration patterns
+
+You can install the reference as an actual auto-loading Claude skill by
+copying or symlinking `skills/abap-clean-core/` into your
+`~/.claude/skills/` — but that's an explicit choice. The default
+behavior of this repo is opt-in, prompt-only.
 
 ## Examples
 
