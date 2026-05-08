@@ -65,8 +65,8 @@ npm install -g claude-for-abap
 npx claude-for-abap
 ```
 
-Requires Node.js **20+** (undici v8, used as the HTTP client, dropped Node
-18 support).
+Requires Node.js **22.19+** (undici v8, used as the HTTP client, requires
+this minimum).
 
 ## Configure
 
