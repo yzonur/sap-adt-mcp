@@ -27,7 +27,9 @@ developer in Eclipse.
 ## What's in the box
 
 **14 high-level tools** wrapped around the most common ADT endpoints, plus a
-generic escape hatch for anything else.
+generic escape hatch for anything else, **plus 5 user-invokable Clean Core
+prompts** that turn the tool surface into outcome-shaped slash commands
+(see [Clean Core prompts](#clean-core-prompts) below).
 
 | Category | Tools |
 | --- | --- |
@@ -263,6 +265,40 @@ Friendly aliases (any of either column work):
 | metadataext / ddlx | DDLX |
 | behaviordef / bdef | BDEF |
 | messageclass / msag | MSAG |
+
+## Clean Core prompts
+
+The server exposes five MCP prompts that encode SAP's Clean Core
+extensibility framework. They surface in MCP-compatible clients (Claude
+Desktop, Claude Code, …) as user-invokable slash commands. **Nothing
+auto-fires** — Clean Core is an S/4HANA discipline and explicitly does not
+apply to ECC; every prompt body starts with an applicability check that
+backs off if the target system is ECC.
+
+In Claude Code (assuming you registered the server as `sap-adt`), the
+exact commands are:
+
+| Command | Arguments | What it does |
+| --- | --- | --- |
+| `/mcp__sap-adt__clean_core_grade` | `object` (req), `type` (req), `system` | Grade one object A/B/C/D. Pulls source + ATC, classifies, cites reasons, sketches the Level A refactor if Level C/D. |
+| `/mcp__sap-adt__clean_core_review` | `package` (req), `system`, `maxObjects` (default 50) | Walk a package and compute Clean Core Share %, Tech Debt Score, top Level D offenders. |
+| `/mcp__sap-adt__clean_core_refactor` | `object`, `type`, `system` (all optional) | Enter refactor mode. Loads BAPI-wrapper / MARA→released-CDS / modification→BAdI patterns. With `object` it pre-seeds; without, waits for direction. |
+| `/mcp__sap-adt__clean_core_create` | `requirement`, `package`, `system` (all optional) | Enter creation mode at Level A by default — ABAP Cloud syntax, released CDS views, RAP, business object interfaces. Drives the `create_object → set_source → syntax_check → activate` pipeline. |
+| `/mcp__sap-adt__clean_core_design` | `use_case` (optional) | Architecture mode — fit-to-standard, 3-phase methodology, on-stack vs side-by-side, hybrid. No code writes. Produces a target-solution memo. |
+
+The slash-command name structure is determined by the MCP client: the
+`mcp__<server-alias>__` prefix is added automatically based on the alias
+you used when registering the server. If you registered the server with
+a different alias (e.g. `claude mcp add cc -- npx claude-for-abap`), the
+prefix changes accordingly (`/mcp__cc__clean_core_grade`).
+
+In Claude Desktop, prompts appear in the slash-command picker — same
+naming.
+
+For the long-form reference material (Stay Clean / Get Clean playbook,
+A/B/C/D level deep-dive, Cloudification Repository state semantics, ABAP
+Cloud allowed/forbidden lists, decision framework, KPI calculations), see
+[`skills/abap-clean-core/`](skills/abap-clean-core).
 
 ## Examples
 
