@@ -42,7 +42,12 @@ export function buildCreateRequest({
           ` xmlns:adtcore="http://www.sap.com/adt/core"` +
           ` adtcore:name="${escapeXml(upperName)}" adtcore:type="PROG/P"` +
           ` adtcore:description="${escapeXml(desc)}"${respAttr}` +
-          ` program:programType="${programType ?? "executableProgram"}">` +
+          // programType is whitelisted to known ADT values; anything else
+          // would either be rejected by SAP or, if it contained a stray
+          // double-quote, let the caller close the attribute and inject
+          // arbitrary XML attributes / elements (e.g. a second packageRef
+          // pointing at a different package than the one the user asked for).
+          ` program:programType="${escapeXml(validateProgramType(programType))}">` +
           packageRef(upperPkg) +
           `</program:abapProgram>`,
       };
@@ -211,4 +216,29 @@ function escapeXml(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+// SAP's published ADT values for program:programType. Anything outside this
+// set is rejected so a caller can't smuggle XML attribute terminators into
+// the attribute value (defense in depth — escapeXml at the call site already
+// handles quoting).
+const ALLOWED_PROGRAM_TYPES = new Set([
+  "executableProgram",
+  "modulePool",
+  "subroutinePool",
+  "functionGroup",
+  "interfacePool",
+  "classPool",
+  "typeGroup",
+  "include",
+]);
+
+function validateProgramType(programType) {
+  if (programType == null) return "executableProgram";
+  if (typeof programType !== "string" || !ALLOWED_PROGRAM_TYPES.has(programType)) {
+    throw new Error(
+      `Invalid programType: ${programType}. Allowed: ${[...ALLOWED_PROGRAM_TYPES].join(", ")}`
+    );
+  }
+  return programType;
 }

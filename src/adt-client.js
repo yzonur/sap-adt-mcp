@@ -14,6 +14,16 @@ const READONLY_POST_PATHS = [
   "/sap/bc/adt/checkruns",
 ];
 
+// Headers a caller is NOT allowed to override via adt_request. Letting these
+// through would let the LLM (or anything that prompt-injects it) impersonate
+// another user (Authorization), forge a session (Cookie), or smuggle a stale
+// CSRF token. The client manages all three internally.
+const PROTECTED_HEADERS = new Set([
+  "authorization",
+  "cookie",
+  "x-csrf-token",
+]);
+
 const DEBUG = process.env.SAP_ADT_MCP_DEBUG === "1";
 
 export class ReadOnlyViolationError extends Error {
@@ -45,9 +55,18 @@ export class AdtClient {
   async request({ method = "GET", path, query, body, headers = {}, accept }) {
     const upperMethod = method.toUpperCase();
 
+    // Resolve the path the same way #buildUrl will resolve it (collapsing
+    // "../" segments) BEFORE running the read-only check. Doing the check on
+    // the raw string lets a caller smuggle a write through a read-only
+    // allowlist entry, e.g. "/sap/bc/adt/checkruns/../programs/..."
+    // ─ startsWith() sees "/sap/bc/adt/checkruns" and allows the request, but
+    // new URL() then collapses it to "/sap/bc/adt/programs/...". Normalize
+    // first, gate second.
+    const resolvedPath = this.#resolvePath(path);
+
     if (UNSAFE_METHODS.has(upperMethod) && this.profile.readOnly) {
-      if (!isReadOnlyPostPath(path)) {
-        throw new ReadOnlyViolationError(upperMethod, path);
+      if (!isReadOnlyPostPath(resolvedPath)) {
+        throw new ReadOnlyViolationError(upperMethod, resolvedPath);
       }
     }
 
@@ -55,7 +74,7 @@ export class AdtClient {
       await this.#fetchCsrf();
     }
 
-    let res = await this.#send(upperMethod, path, query, body, headers, accept);
+    let res = await this.#send(upperMethod, resolvedPath, query, body, headers, accept);
 
     if (
       res.status === 403 &&
@@ -63,10 +82,33 @@ export class AdtClient {
     ) {
       this.csrfToken = null;
       await this.#fetchCsrf();
-      res = await this.#send(upperMethod, path, query, body, headers, accept);
+      res = await this.#send(upperMethod, resolvedPath, query, body, headers, accept);
     }
 
     return res;
+  }
+
+  // Public wrapper so callers (e.g. the adt_request handler) can apply the
+  // same path-prefix policy the client itself enforces internally.
+  resolvePath(path) {
+    return this.#resolvePath(path);
+  }
+
+  #resolvePath(path) {
+    if (typeof path !== "string" || path.length === 0) {
+      throw new Error("ADT path must be a non-empty string");
+    }
+    const base = this.profile.host.replace(/\/$/, "");
+    const normalized = path.startsWith("/") ? path : `/${path}`;
+    let url;
+    try {
+      url = new URL(base + normalized);
+    } catch {
+      throw new Error(`ADT path is not a valid URL component: ${path}`);
+    }
+    // Preserve any query stuffed into the path (some internal callers do
+    // this); the read-only check below splits on "?" anyway.
+    return url.pathname + url.search;
   }
 
   async #fetchCsrf() {
@@ -100,7 +142,14 @@ export class AdtClient {
     if (this.csrfToken && UNSAFE_METHODS.has(method)) {
       headers.set("X-CSRF-Token", this.csrfToken);
     }
-    for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v);
+    // Apply caller-supplied headers, but never let them override the auth /
+    // session headers the client owns. Without this, adt_request callers (or
+    // anything that prompt-injects the LLM into using it) could swap in a
+    // forged Authorization to impersonate another SAP user.
+    for (const [k, v] of Object.entries(extraHeaders)) {
+      if (PROTECTED_HEADERS.has(k.toLowerCase())) continue;
+      headers.set(k, v);
+    }
 
     let reqBody;
     if (body !== undefined && body !== null) {

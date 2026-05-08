@@ -1181,6 +1181,23 @@ async function handleTransportDiff(args) {
   for (const ref of refs) {
     const uri = ref.uri;
     if (!uri) continue;
+    // The transport response is structured XML from SAP, but a malicious
+    // entry (or an attacker-controlled DEV system upstream of a PRD diff)
+    // could hand us a URI that escapes the ADT namespace, e.g.
+    // "/../../../sap/bc/soap/rfc?...". Both clients would happily issue
+    // that request with their configured creds. Validate post-normalization
+    // and skip anything that doesn't resolve under /sap/bc/adt/.
+    let resolvedUri;
+    try {
+      resolvedUri = a.client.resolvePath(uri).split("?")[0];
+    } catch {
+      results.push({ name: ref.name, type: ref.type, uri, status: "invalid-uri" });
+      continue;
+    }
+    if (!resolvedUri.toLowerCase().startsWith("/sap/bc/adt/")) {
+      results.push({ name: ref.name, type: ref.type, uri, status: "rejected-non-adt-uri" });
+      continue;
+    }
     const sourcePath = uri.endsWith("/source/main") ? uri : `${uri}/source/main`;
     let textA = "";
     let textB = "";
@@ -1469,6 +1486,26 @@ async function handleRequest(args) {
     return textResult("`path` is required and must be a string.", true);
   }
   const { client, name: sys } = getClient(args.system);
+  // Confine adt_request to the ADT namespace. Without this, the tool is a
+  // confused-deputy primitive: a caller (or a prompt-injected LLM) could
+  // use the configured SAP credentials to hit OData services
+  // (/sap/opu/odata/...), SOAP/RFC over HTTP (/sap/bc/soap/rfc), or any
+  // other ICF service the user can reach — well outside the "ADT REST"
+  // contract the tool advertises. Path traversal is collapsed first so
+  // "/sap/bc/adt/../opu/odata/..." can't slip through.
+  let resolved;
+  try {
+    resolved = client.resolvePath(args.path);
+  } catch (err) {
+    return textResult(`adt_request: ${err.message}`, true);
+  }
+  const pathnameOnly = resolved.split("?")[0];
+  if (!pathnameOnly.toLowerCase().startsWith("/sap/bc/adt/")) {
+    return textResult(
+      `adt_request: path must be under /sap/bc/adt/. Got: ${pathnameOnly}`,
+      true
+    );
+  }
   const res = await client.request({
     method: args.method,
     path: args.path,
