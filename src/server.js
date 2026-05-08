@@ -4,6 +4,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -16,6 +18,7 @@ import { fetchPackageNodes } from "./node-structure.js";
 import { unifiedLineDiff } from "./diff.js";
 import { parseObjectReferences } from "./object-references.js";
 import { buildCreateRequest } from "./object-create.js";
+import { listPrompts, getPrompt } from "./prompts.js";
 
 const PKG = JSON.parse(
   readFileSync(
@@ -585,10 +588,19 @@ const tools = [
 
 const server = new Server(
   { name: "claude-for-abap", version: PKG.version },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, prompts: {} } }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: listPrompts(),
+}));
+
+server.setRequestHandler(GetPromptRequestSchema, async (req) => {
+  const { name, arguments: args = {} } = req.params;
+  return getPrompt(name, args);
+});
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args = {} } = req.params;
