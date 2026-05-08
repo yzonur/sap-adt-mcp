@@ -6,6 +6,73 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Added
+
+- **Five Clean Core MCP prompts** — user-invokable slash commands that
+  encode SAP's Clean Core extensibility framework and pair it with the
+  `adt_*` tools so the model can act on real systems. None auto-fires;
+  every prompt includes an applicability check that backs off on ECC and
+  falls back to classic-ABAP idioms.
+  - `clean_core_grade` — grade one object A/B/C/D, with refactor sketch
+  - `clean_core_review` — package-wide KPIs (Clean Core Share, Tech Debt
+    Score, top Level D offenders)
+  - `clean_core_refactor` — mode-loading; loads wrapper / released-CDS /
+    BAdI patterns
+  - `clean_core_create` — mode-loading; defaults new objects to Level A
+    (ABAP Cloud, RAP, business object interfaces)
+  - `clean_core_design` — mode-loading; fit-to-standard + 3-phase
+    methodology + on-stack vs side-by-side, no code writes
+- **`skills/abap-clean-core/`** — long-form Clean Core reference shipped
+  alongside the MCP. Five files (`SKILL.md` plus four deep-dives in
+  `references/`): A/B/C/D level deep-dive, ABAP Cloud allowed/forbidden
+  lists, the SAP Application Extension Methodology in detail, governance
+  & KPI calculations. Optional install as an auto-loading Claude skill;
+  the default repo behavior is prompt-only opt-in.
+
+### Security
+
+- **Path-traversal bypass of `readOnly`** (CRITICAL) — `isReadOnlyPostPath`
+  ran `startsWith` on the raw path; `new URL()` later collapsed `../`
+  segments, letting a write request smuggle in under a read-only
+  allowlist entry. Fixed: path is now URL-normalized before the
+  read-only check, and the same canonical path is used for the actual
+  request.
+- **`adt_request` confused-deputy** (CRITICAL) — the escape hatch
+  accepted any path. The configured SAP credentials could be used
+  against `/sap/opu/odata/...`, `/sap/bc/soap/rfc`, or any other ICF
+  service. Fixed: paths are normalized and rejected if they don't sit
+  under `/sap/bc/adt/`.
+- **`Authorization` / `Cookie` / `X-CSRF-Token` override via
+  `extraHeaders`** (HIGH) — caller-supplied headers were applied after
+  the client-owned auth headers and overwrote them. Fixed: a
+  `PROTECTED_HEADERS` allowlist drops these three before they reach
+  `Headers.set`.
+- **`adt_transport_diff` URI injection** (HIGH) — SAP-returned object
+  URIs were used verbatim as the request path against both diff
+  systems; a malicious entry with `../../../sap/bc/soap/rfc?...` could
+  redirect the diff to non-ADT endpoints. Fixed: URIs are normalized
+  and skipped (status `rejected-non-adt-uri`) if they don't resolve
+  under `/sap/bc/adt/`.
+- **`programType` XML attribute injection** (HIGH) in
+  `adt_create_object` for programs — the field was concatenated into
+  the XML body without escaping or validation, letting a caller close
+  the attribute and inject elements (e.g., a second `packageRef`
+  pointing at a different package). Fixed: validated against the
+  SAP-published set (`executableProgram`, `modulePool`,
+  `subroutinePool`, `functionGroup`, `interfacePool`, `classPool`,
+  `typeGroup`, `include`) and run through `escapeXml` at the call site.
+
+All five fixes have regression tests in `test/security.test.js`.
+
+### Changed
+
+- **Node.js minimum bumped to 22.19+.** The `undici@^8` dep already
+  required Node 22.19+ in practice; the previous `engines.node: ">=18.17"`
+  claim was unenforceable (any user on Node 18 or 20 would crash on the
+  first ADT call). CI matrix moved from `[18, 20, 22]` to `[22, 24]`.
+
 ## [0.3.0]
 
 ### Added
