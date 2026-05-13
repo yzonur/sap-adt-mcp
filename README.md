@@ -236,8 +236,8 @@ or rejecting credentials. Run this first when troubleshooting.
 
 | Tool | Purpose | Notes |
 | --- | --- | --- |
-| `adt_list_dumps` | List ST22 short dumps. | Optional filters: `user`, `host`, `from`/`to`, `maxResults` (default 20). Atom feed is parsed into structured entries; release-specific `rba:*` fields are surfaced as a map. |
-| `adt_get_dump` | Fetch a single dump by id. | Returns the parsed top-level fields plus the raw XML body so the agent can drill into the call stack itself. |
+| `adt_list_dumps` | List ST22 short dumps. | Optional filters: `user`, `host`, `from`/`to` (YYYYMMDD), `maxResults` (default 20). Atom feed is parsed into structured entries with `runtimeError`, `program`, `user`, `updated`, and release-specific `rba:*`/`dump:*` fields surfaced as a map. Trims client-side because some releases ignore the server-side cap. |
+| `adt_get_dump` | Fetch a single dump by id. | Two-step fetch: metadata XML (runtime error, program, links) followed by the formatted dump text from the `dump:link relation="contents"` sub-resource. Returns a `chapters` map (shortText, whatHappened, errorAnalysis, howToCorrect, whereTerminated, sourceCodeExtract, …). Pass `chapters: [...]` to limit, `full: true` to include the raw text. |
 
 ### Data
 

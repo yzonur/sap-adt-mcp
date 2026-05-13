@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseDumpFeed, parseDumpDetail } from "../src/dump-feed.js";
+import {
+  parseDumpFeed,
+  parseDumpDetail,
+  parseDumpMetadata,
+  parseDumpChapters,
+  CRITICAL_CHAPTER_KEYS,
+} from "../src/dump-feed.js";
 
 test("parseDumpFeed extracts entries with id, title, user, timestamp", () => {
   const xml = `
@@ -51,6 +57,27 @@ test("parseDumpFeed decodes entities in title and summary", () => {
   assert.equal(entry.summary, "Error <X>");
 });
 
+test("parseDumpFeed handles namespace-prefixed Atom entries (E4D shape)", () => {
+  // Real SAP feeds tag every element with the atom: prefix.
+  const xml = `
+    <atom:feed xmlns:atom="http://www.w3.org/2005/Atom">
+      <atom:entry>
+        <atom:id>https://host/sap/bc/adt/runtime/dump/ABC123</atom:id>
+        <atom:updated>2026-05-13T10:00:00Z</atom:updated>
+        <atom:author><atom:name>DEVUSER</atom:name></atom:author>
+        <atom:category term="DATREF_NOT_ASSIGNED" label="ABAP runtime error"/>
+        <atom:category term="/FOO/CL_BAR============CP" label="Terminated ABAP program"/>
+      </atom:entry>
+    </atom:feed>`;
+  const [entry] = parseDumpFeed(xml);
+  assert.equal(entry.id, "ABC123");
+  assert.equal(entry.runtimeError, "DATREF_NOT_ASSIGNED");
+  assert.equal(entry.program, "/FOO/CL_BAR============CP");
+  assert.equal(entry.user, "DEVUSER");
+  // Title falls back to runtimeError when <title> is absent.
+  assert.equal(entry.title, "DATREF_NOT_ASSIGNED");
+});
+
 test("parseDumpDetail extracts id and rba fields", () => {
   const xml = `
     <rba:abapRuntimeError xmlns:rba="http://www.sap.com/adt/rba">
@@ -65,4 +92,86 @@ test("parseDumpDetail extracts id and rba fields", () => {
   assert.equal(detail.title, "MESSAGE_TYPE_X");
   assert.equal(detail.fields["rba:errorClass"], "CX_FOO");
   assert.equal(detail.fields["rba:program"], "SAPLZTEST");
+});
+
+test("parseDumpMetadata extracts links and dump fields", () => {
+  const xml = `
+    <dump:abapRuntimeError xmlns:dump="http://www.sap.com/adt/runtime/dump"
+                            xmlns:atom="http://www.w3.org/2005/Atom">
+      <dump:id>0123ABCDEF</dump:id>
+      <dump:runtimeError>DATREF_NOT_ASSIGNED</dump:runtimeError>
+      <dump:program>/FOO/CL_BAR============CP</dump:program>
+      <dump:line>42</dump:line>
+      <dump:link relation="contents"
+                 uri="/sap/bc/adt/runtime/dump/0123ABCDEF/formatted"
+                 contentType="text/plain"/>
+      <dump:link relation="contents"
+                 uri="/sap/bc/adt/runtime/dump/0123ABCDEF/unformatted"
+                 contentType="text/plain"/>
+    </dump:abapRuntimeError>`;
+  const m = parseDumpMetadata(xml);
+  assert.equal(m.id, "0123ABCDEF");
+  assert.equal(m.fields["dump:runtimeError"], "DATREF_NOT_ASSIGNED");
+  assert.equal(m.fields["dump:program"], "/FOO/CL_BAR============CP");
+  assert.equal(m.fields["dump:line"], "42");
+  assert.equal(m.links.length, 2);
+  assert.equal(m.links[0].relation, "contents");
+  assert.match(m.links[0].uri, /formatted$/);
+  assert.equal(m.links[0].contentType, "text/plain");
+});
+
+test("parseDumpMetadata returns empty links array when none present", () => {
+  const m = parseDumpMetadata("<dump:abapRuntimeError xmlns:dump=\"x\"><dump:id>X</dump:id></dump:abapRuntimeError>");
+  assert.deepEqual(m.links, []);
+});
+
+test("parseDumpChapters splits known chapter titles", () => {
+  const text = [
+    "Short text",
+    "    SQL error in CL_FOO method bar.",
+    "What happened?",
+    "    The exception CX_SY_ZERODIVIDE was raised.",
+    "    Continuation lines stay in the chapter.",
+    "Error analysis",
+    "    Caused by division by zero in line 42.",
+    "How to correct the error",
+    "    Add a guard before the division.",
+    "Source Code Extract",
+    "    line 41: DATA(d) = a / b.",
+    "    line 42: WRITE: d.",
+  ].join("\n");
+  const ch = parseDumpChapters(text);
+  assert.ok(ch.shortText.includes("SQL error"));
+  assert.ok(ch.whatHappened.includes("CX_SY_ZERODIVIDE"));
+  assert.ok(ch.whatHappened.includes("Continuation lines"));
+  assert.ok(ch.errorAnalysis.includes("division by zero"));
+  assert.ok(ch.howToCorrect.includes("Add a guard"));
+  assert.ok(ch.sourceCodeExtract.includes("line 42"));
+});
+
+test("parseDumpChapters ignores titles inside indented body (false-positive guard)", () => {
+  const text = [
+    "Short text",
+    "    Some body text that mentions Error analysis but indented.",
+    "    Should not start a new chapter.",
+  ].join("\n");
+  const ch = parseDumpChapters(text);
+  assert.ok(ch.shortText.includes("Error analysis"));
+  assert.equal(ch.errorAnalysis, undefined);
+});
+
+test("parseDumpChapters returns empty object on empty / non-string input", () => {
+  assert.deepEqual(parseDumpChapters(""), {});
+  assert.deepEqual(parseDumpChapters(null), {});
+});
+
+test("CRITICAL_CHAPTER_KEYS is the documented six-chapter set", () => {
+  assert.deepEqual(CRITICAL_CHAPTER_KEYS, [
+    "shortText",
+    "whatHappened",
+    "errorAnalysis",
+    "howToCorrect",
+    "whereTerminated",
+    "sourceCodeExtract",
+  ]);
 });
