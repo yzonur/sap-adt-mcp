@@ -125,6 +125,51 @@ test("parseDumpMetadata returns empty links array when none present", () => {
   assert.deepEqual(m.links, []);
 });
 
+test("parseDumpMetadata extracts root-element attributes (E4D shape)", () => {
+  // Real on-prem ADT puts the dump payload as attributes on the root element,
+  // not as child leaf elements. Title is a compound string; we keep it as-is.
+  const xml = `
+    <dump:dump xmlns:dump="http://www.sap.com/adt/runtime/dump"
+               title="Runtime Error: DATREF_NOT_ASSIGNED 13.05.2026"
+               error="DATREF_NOT_ASSIGNED"
+               author="X-IKOCA"
+               terminatedProgram="/FGLP/CL_AVL_UTIL=============CP"
+               serverInstance="s4hanad_E4D_00"
+               datetime="2026-05-13T10:09:41Z">
+      <dump:link relation="contents" uri="/sap/bc/adt/runtime/dump/X/formatted"
+                 contentType="text/plain"/>
+    </dump:dump>`;
+  const m = parseDumpMetadata(xml);
+  assert.equal(m.runtimeError, "DATREF_NOT_ASSIGNED");
+  assert.equal(m.program, "/FGLP/CL_AVL_UTIL=============CP");
+  assert.equal(m.user, "X-IKOCA");
+  assert.equal(m.time, "2026-05-13T10:09:41Z");
+  assert.equal(m.server, "s4hanad_E4D_00");
+  assert.match(m.title, /^Runtime Error/);
+  // Root attributes are also stored in fields.
+  assert.equal(m.fields.error, "DATREF_NOT_ASSIGNED");
+  assert.equal(m.fields.terminatedProgram, "/FGLP/CL_AVL_UTIL=============CP");
+  // xmlns declarations are filtered out of fields.
+  assert.equal(m.fields.xmlns, undefined);
+  assert.equal(m.fields["xmlns:dump"], undefined);
+  assert.equal(m.links.length, 1);
+});
+
+test("parseDumpMetadata also surfaces leaf-form metadata to top level", () => {
+  // Older / synthetic shape: leaf elements, no root attributes.
+  const xml = `
+    <dump:abapRuntimeError xmlns:dump="x">
+      <dump:id>X</dump:id>
+      <dump:runtimeError>FOO_BAR</dump:runtimeError>
+      <dump:terminatedProgram>SAPLZ</dump:terminatedProgram>
+      <dump:author>USR</dump:author>
+    </dump:abapRuntimeError>`;
+  const m = parseDumpMetadata(xml);
+  assert.equal(m.runtimeError, "FOO_BAR");
+  assert.equal(m.program, "SAPLZ");
+  assert.equal(m.user, "USR");
+});
+
 test("parseDumpChapters splits known chapter titles", () => {
   const text = [
     "Short text",
@@ -147,6 +192,29 @@ test("parseDumpChapters splits known chapter titles", () => {
   assert.ok(ch.errorAnalysis.includes("division by zero"));
   assert.ok(ch.howToCorrect.includes("Add a guard"));
   assert.ok(ch.sourceCodeExtract.includes("line 42"));
+});
+
+test("parseDumpChapters handles boxed (pipe-wrapped) chapter format (E4D shape)", () => {
+  const text = [
+    "----------------------------------------------------------------------------------",
+    "|Short Text                                                                      |",
+    "|    Exception condition \"URL_PATH_IS_NOT_SUPPORTED\" triggered.                  |",
+    "----------------------------------------------------------------------------------",
+    "|What happened?                                                                  |",
+    "|    The exception 'CX_FOO' was raised.                                          |",
+    "----------------------------------------------------------------------------------",
+    "|Source Code Extract                                                             |",
+    "|    line 41: METHOD bar.                                                        |",
+    "|    line 42:   RAISE EXCEPTION TYPE cx_foo.                                     |",
+    "----------------------------------------------------------------------------------",
+  ].join("\n");
+  const ch = parseDumpChapters(text);
+  assert.ok(ch.shortText, "shortText should be extracted from boxed format");
+  assert.ok(ch.shortText.includes("URL_PATH_IS_NOT_SUPPORTED"));
+  assert.ok(ch.whatHappened.includes("CX_FOO"));
+  assert.ok(ch.sourceCodeExtract.includes("line 42"));
+  // Separator lines (rules of dashes) must not bleed into the body.
+  assert.equal(/----/.test(ch.shortText), false);
 });
 
 test("parseDumpChapters ignores titles inside indented body (false-positive guard)", () => {

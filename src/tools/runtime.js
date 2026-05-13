@@ -139,10 +139,17 @@ export function register({ getClient }) {
           raw: text.slice(0, 8000),
         });
       }
-      // Server-side cap is unreliable; some E4D-class releases return all
-      // available entries regardless of maxResults. Trim client-side.
+      // Server-side cap is unreliable; some on-prem releases return every
+      // available entry regardless of maxResults. Trim client-side. Strip
+      // the per-entry summary too — on real systems it's a 10+KB HTML chunk
+      // (chapter index + back-link) that bloats list responses past the
+      // tool-output token limit. Agents that need detail call adt_get_dump.
       const total = entries.length;
-      const trimmed = entries.slice(0, max);
+      const trimmed = entries.slice(0, max).map((e) => {
+        // eslint-disable-next-line no-unused-vars
+        const { summary, ...rest } = e;
+        return rest;
+      });
       return jsonResult({
         system: sys,
         count: trimmed.length,
