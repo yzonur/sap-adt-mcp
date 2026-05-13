@@ -182,7 +182,10 @@ export function parseDumpMetadata(xml) {
 const CHAPTER_PATTERNS = [
   { key: "shortText", re: /^(?:Short\s*text|Kurztext)\b/i },
   { key: "whatHappened", re: /^(?:What\s*happened\??|Was\s*ist\s*passiert\??)\b/i },
-  { key: "whatCanYouDo", re: /^What\s*can\s*you\s*do\??/i },
+  // Real dumps title this chapter as "What can I do?" (first-person) — older
+  // docs say "you". Accept any single subject word so translations / variants
+  // ("we", etc.) don't fall back into the previous chapter's body.
+  { key: "whatCanYouDo", re: /^What\s*can\s*\S+\s*do\??/i },
   { key: "errorAnalysis", re: /^(?:Error\s*analysis|Fehleranalyse)\b/i },
   { key: "howToCorrect", re: /^How\s*to\s*correct\b/i },
   { key: "whereTerminated", re: /^(?:Information\s*on\s*where\s*terminated|Where\s*terminated)\b/i },
