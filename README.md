@@ -26,7 +26,7 @@ developer in Eclipse.
 
 ## What's in the box
 
-**14 high-level tools** wrapped around the most common ADT endpoints, plus a
+**27 high-level tools** wrapped around the most common ADT endpoints, plus a
 generic escape hatch for anything else, **plus 5 user-invokable Clean Core
 prompts** that turn the tool surface into outcome-shaped slash commands
 (see [Clean Core prompts](#clean-core-prompts) below).
@@ -40,6 +40,8 @@ prompts** that turn the tool surface into outcome-shaped slash commands
 | Discovery | `adt_browse_package`, `adt_list_packages`, `adt_search_objects`, `adt_where_used` |
 | Cross-system | `adt_compare_source`, `adt_transport_diff` |
 | Transports | `adt_list_transports`, `adt_get_transport`, `adt_create_transport`, `adt_release_transport` |
+| Runtime errors | `adt_list_dumps`, `adt_get_dump` |
+| Data | `adt_read_table` |
 | Escape hatch | `adt_request` |
 
 **Multi-system aware.** One config, many SAP systems (DEV / QAS / PRD or
@@ -230,6 +232,19 @@ or rejecting credentials. Run this first when troubleshooting.
 | `adt_compare_source` | Diff one object between two systems. | Returns unified diff + `{ added, removed }` stats. |
 | `adt_transport_diff` | Diff every object in a TR between two systems. | Caps at `maxObjects` (default 50). |
 
+### Runtime errors
+
+| Tool | Purpose | Notes |
+| --- | --- | --- |
+| `adt_list_dumps` | List ST22 short dumps. | Optional filters: `user`, `host`, `from`/`to`, `maxResults` (default 20). Atom feed is parsed into structured entries; release-specific `rba:*` fields are surfaced as a map. |
+| `adt_get_dump` | Fetch a single dump by id. | Returns the parsed top-level fields plus the raw XML body so the agent can drill into the call stack itself. |
+
+### Data
+
+| Tool | Purpose | Notes |
+| --- | --- | --- |
+| `adt_read_table` | Run an OpenSQL SELECT via the ADT Data Preview API. | SE16-style table reads. SELECT-only — INSERT/UPDATE/DELETE rejected client-side; the SAP endpoint enforces server-side too. `maxRows` capped at 5000 (default 100). Requires NetWeaver 7.55+ / S/4HANA. |
+
 ### Transports
 
 | Tool | Purpose | Notes |
@@ -408,12 +423,20 @@ MCP client (Claude Desktop / Claude Code / custom)
          │  stdio (JSON-RPC)
          ▼
   ┌──────────────────────────────────┐
-  │  src/server.js                   │  tool definitions + dispatch
+  │  src/server.js                   │  CLI + MCP dispatch (thin)
+  │   ├─ src/tools/*.js              │  one module per category:
+  │   │                              │    connection, source, quality,
+  │   │                              │    lifecycle, discovery,
+  │   │                              │    cross-system, transports,
+  │   │                              │    runtime, data, request
   │   ├─ src/object-uris.js          │  type alias → ADT URI map
   │   ├─ src/node-structure.js       │  package tree XML parser
   │   ├─ src/object-references.js    │  <objectReference> parser
+  │   ├─ src/dump-feed.js            │  runtime-dumps Atom parser
+  │   ├─ src/data-preview.js         │  Data Preview XML parser + SELECT guard
   │   ├─ src/diff.js                 │  unified diff (LCS)
   │   ├─ src/adt-error.js            │  <exc:exception> parser
+  │   ├─ src/lock.js                 │  ADT lock acquire / release
   │   └─ src/adt-client.js           │  HTTP client: auth / CSRF / cookies / timeout
   └──────────────────────────────────┘
          │  HTTPS

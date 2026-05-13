@@ -6,6 +6,35 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.5.0]
+
+### Added
+
+- **`adt_list_dumps` / `adt_get_dump`** — ST22 runtime errors are now first-class.
+  `list_dumps` queries `/sap/bc/adt/runtime/dumps` with optional `user`, `host`,
+  `from` / `to`, and `maxResults` filters; the response Atom feed is parsed into
+  structured entries with their release-specific `rba:*` fields surfaced as a
+  map (host, program, include, line, errorClass, …). `get_dump` fetches the
+  full detail by id. Falls back to raw XML on parse failure so the agent can
+  still reason about niche dump shapes.
+- **`adt_read_table`** — SE16-style table reads via the ADT Data Preview API
+  (`/sap/bc/adt/datapreview/freestyle`). OpenSQL SELECT in, structured
+  `{ columns, rows }` out. Client-side SELECT-only guard + per-call row cap
+  (default 100, hard cap 5000); the SAP endpoint enforces read-only on its
+  side too. Requires NetWeaver 7.55+ / S/4HANA — older systems may not
+  expose the endpoint.
+
+### Changed
+
+- **Modular tool layout.** `src/server.js` shrank from 1636 lines to ~190 and
+  is now a thin dispatcher; each tool category lives in its own module under
+  `src/tools/` (`connection`, `source`, `quality`, `lifecycle`, `discovery`,
+  `cross-system`, `transports`, `runtime`, `data`, `request`). Shared helpers
+  moved into `src/result.js`, `src/lock.js`, and `src/xml.js`. New tool
+  modules follow the contract `export const tools` + `export function register(ctx)`,
+  validated by `test/tools-shape.test.js`. No behavior changes for existing
+  tools — every previous test still passes.
+
 ## [0.4.0]
 
 ### Added
