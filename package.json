@@ -1,6 +1,6 @@
 {
   "name": "claude-for-abap",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "MCP server giving Claude live access to SAP systems via ADT (ABAP Development Tools) REST. Read source, search, run syntax checks, and edit ABAP objects from any MCP-compatible client.",
   "type": "module",
   "main": "src/server.js",
@@ -19,7 +19,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/adt-error.test.js test/diff.test.js test/node-structure.test.js test/object-create.test.js test/object-references.test.js test/object-uris.test.js test/prompts.test.js test/security.test.js",
+    "test": "node --test test/adt-error.test.js test/data-preview.test.js test/diff.test.js test/dump-feed.test.js test/node-structure.test.js test/object-create.test.js test/object-references.test.js test/object-uris.test.js test/prompts.test.js test/security.test.js test/tools-shape.test.js",
     "lint": "eslint src test"
   },
   "keywords": [
