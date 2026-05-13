@@ -36,6 +36,11 @@ on-prem actually puts the dump payload), and the list response carried a
   a 20-row list bloats responses past the tool-output token limit. Stripped
   from list responses; agents that need detail call `adt_get_dump` (which
   returns structured chapters anyway).
+- **`whatCanYouDo` chapter pattern accepts variants of the subject.** Real
+  dumps title the chapter "What can I do?" (first-person); the original
+  pattern was anchored on "you" and the body leaked into the preceding
+  `whatHappened` chapter. Pattern broadened to accept any single subject
+  word so translations and phrasing variants don't desync the parser.
 
 ## [0.5.1]
 

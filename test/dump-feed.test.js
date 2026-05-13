@@ -217,6 +217,25 @@ test("parseDumpChapters handles boxed (pipe-wrapped) chapter format (E4D shape)"
   assert.equal(/----/.test(ch.shortText), false);
 });
 
+test("parseDumpChapters recognizes 'What can I do?' (not just 'you')", () => {
+  // Real on-prem dumps phrase this chapter in the first person. The old
+  // regex was anchored to "you" and the body leaked into whatHappened.
+  const text = [
+    "What happened?",
+    "    The exception was raised.",
+    "What can I do?",
+    "    Note the user actions; reproduce with a debugger.",
+    "Error analysis",
+    "    Caused by a null reference.",
+  ].join("\n");
+  const ch = parseDumpChapters(text);
+  assert.ok(ch.whatHappened.includes("exception was raised"));
+  assert.equal(ch.whatHappened.includes("Note the user actions"), false);
+  assert.ok(ch.whatCanYouDo);
+  assert.ok(ch.whatCanYouDo.includes("Note the user actions"));
+  assert.ok(ch.errorAnalysis.includes("null reference"));
+});
+
 test("parseDumpChapters ignores titles inside indented body (false-positive guard)", () => {
   const text = [
     "Short text",
