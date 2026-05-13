@@ -6,6 +6,47 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.5.1]
+
+Verifying v0.5.0 against a real on-prem ADT system (NetWeaver-class) exposed
+three bugs and one gap in the dump tools shipped that day. All four are fixed
+in this patch; no behavior changes elsewhere.
+
+### Fixed
+
+- **`adt_list_dumps` Accept header**. The feed endpoint requires
+  `application/atom+xml;type=feed` and rejects bare `application/atom+xml`
+  with HTTP 406. Tool now sends the correct media type.
+- **`adt_list_dumps` parser missed namespace-prefixed Atom tags**. Real SAP
+  feeds tag elements with the `atom:` prefix (`<atom:entry>`, `<atom:id>`,
+  `<atom:author>`). The list call returned `count: 0` against a feed of 245
+  entries. Parser regex now accepts both prefixed and unprefixed forms.
+- **`adt_list_dumps` exposed `runtimeError` and `program`**. Real feeds carry
+  the runtime error name and terminated program in `<atom:category>`
+  elements, not `<atom:title>`. The parser now extracts both; if `<title>` is
+  absent it falls back to the runtime error name.
+- **`adt_list_dumps` trims client-side**. The server-side `maxResults`
+  parameter is ignored on at least some releases (`maxResults=100` returned
+  245 rows). Tool now caps the response client-side after parsing and reports
+  `totalReturnedByServer` so the truncation is visible.
+- **`adt_get_dump` was completely broken**. Three problems: wrong path
+  (`runtime/dumps/<id>` vs the singular `runtime/dump/<id>` the feed's
+  self-link advertises), double URL-encoding (feed ids arrive already
+  encoded), and wrong Accept header (`application/xml` → 406, real media
+  type is `application/vnd.sap.adt.runtime.dump.v1+xml`). The tool now does
+  a two-step fetch: a metadata XML lookup followed by a GET on the
+  `<dump:link relation="contents">` sub-resource to retrieve the formatted
+  dump text.
+
+### Added
+
+- **`adt_get_dump` chapter extraction**. The formatted dump text is parsed
+  into a chapter map (shortText, whatHappened, errorAnalysis, howToCorrect,
+  whereTerminated, sourceCodeExtract, …). By default the response returns
+  only the six critical chapters; pass `chapters: [...]` to pick specific
+  ones or `full: true` to also include the raw text (typically 100KB+).
+  `chaptersAvailable` lists every chapter the parser recognized.
+
 ## [0.5.0]
 
 ### Added
