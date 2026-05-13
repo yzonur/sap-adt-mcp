@@ -115,10 +115,34 @@ export function parseDumpDetail(xml) {
 // and our get_dump handler — can follow the right sub-resource.
 const LINK_RE = /<(?:[a-z]+:)?link\b([^>]*)\/?>(?:\s*<\/(?:[a-z]+:)?link>)?/gi;
 
+// Extract attributes from the document's root element. Some on-prem releases
+// carry the dump payload as root attributes (title, error, terminatedProgram,
+// author, datetime, serverInstance, …) rather than child elements. xmlns
+// declarations are filtered out.
+const ROOT_OPEN_RE = /<(?:[a-z]+:)?[a-zA-Z_][\w-]*\b([^>]*)>/;
+const ATTR_PAIR_RE = /\b([a-zA-Z_][\w:-]*)\s*=\s*"([^"]*)"/g;
+
+function parseRootAttributes(xml) {
+  const m = xml.match(ROOT_OPEN_RE);
+  if (!m) return {};
+  const out = {};
+  for (const am of m[1].matchAll(ATTR_PAIR_RE)) {
+    const name = am[1];
+    if (name === "xmlns" || name.startsWith("xmlns:")) continue;
+    out[name] = decodeEntities(am[2]);
+  }
+  return out;
+}
+
 export function parseDumpMetadata(xml) {
-  const fields = parseExtensionFields(xml);
+  const rootAttrs = parseRootAttributes(xml);
+  const leafFields = parseExtensionFields(xml);
+  // Root attributes win over leaf-element duplicates (closer to the document
+  // identity); both are stored side-by-side under fields.
+  const fields = { ...leafFields, ...rootAttrs };
   const id =
     pickFirst(xml, "id") ??
+    rootAttrs.id ??
     fields["dump:id"] ??
     fields["rba:id"];
   const links = [];
@@ -131,8 +155,21 @@ export function parseDumpMetadata(xml) {
     const contentType = attrs.match(/\bcontentType="([^"]*)"/i)?.[1];
     if (uri) links.push({ relation, uri: decodeEntities(uri), contentType });
   }
+  // Lift commonly-needed fields to the top level so the agent doesn't have to
+  // probe the fields map for them. We accept both bare names (from root
+  // attributes) and namespaced variants (from leaf elements).
+  const pickField = (...keys) => {
+    for (const k of keys) if (fields[k]) return fields[k];
+    return undefined;
+  };
   return {
     id: id ? id.split("/").pop() : undefined,
+    title: pickField("title", "dump:title", "rba:title"),
+    runtimeError: pickField("error", "dump:error", "runtimeError", "dump:runtimeError"),
+    program: pickField("terminatedProgram", "dump:terminatedProgram", "program", "dump:program"),
+    user: pickField("author", "dump:author", "user", "dump:user"),
+    time: pickField("datetime", "dump:datetime", "occurredAt"),
+    server: pickField("serverInstance", "dump:serverInstance", "host", "dump:host"),
     fields,
     links,
   };
@@ -169,18 +206,31 @@ export const CRITICAL_CHAPTER_KEYS = [
   "sourceCodeExtract",
 ];
 
+// Some on-prem ADT releases ship the formatted dump as a box-drawn table:
+// each line is wrapped in pipe bars (|content|) and chapters are separated
+// by horizontal rules of "-" or "=". Unbox before title matching so the
+// patterns work uniformly across releases.
+function unbox(line) {
+  const m = line.match(/^\|(.*?)\s*\|?\s*$/);
+  return m ? m[1] : line;
+}
+
+const SEPARATOR_RE = /^[-=_]{4,}$/;
+
 export function parseDumpChapters(text) {
   if (typeof text !== "string" || text.length === 0) return {};
   const lines = text.split(/\r?\n/);
   const result = {};
   let current = null;
   for (const raw of lines) {
-    // Titles sit at column 0 (no leading whitespace) and are not blank.
-    const isTitleCandidate = raw.length > 0 && !/^\s/.test(raw);
+    const stripped = unbox(raw);
+    if (SEPARATOR_RE.test(stripped.trim())) continue;
+    // Titles sit at column 0 of the (unboxed) content and are not blank.
+    const isTitleCandidate = stripped.length > 0 && !/^\s/.test(stripped);
     let matched = null;
     if (isTitleCandidate) {
       for (const c of CHAPTER_PATTERNS) {
-        if (c.re.test(raw)) {
+        if (c.re.test(stripped)) {
           matched = c.key;
           break;
         }
@@ -190,7 +240,7 @@ export function parseDumpChapters(text) {
       if (current) result[current.key] = current.body.replace(/\n+$/, "");
       current = { key: matched, body: "" };
     } else if (current) {
-      current.body += raw + "\n";
+      current.body += stripped.replace(/\s+$/, "") + "\n";
     }
   }
   if (current) result[current.key] = current.body.replace(/\n+$/, "");

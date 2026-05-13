@@ -6,6 +6,37 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.5.2]
+
+Second round of dump-tool fixes. v0.5.1 fixed the network-level bugs but a
+real-system test against on-prem ADT (S/4HANA E4D) showed three remaining
+shape mismatches: the chapter parser couldn't read the boxed-pipe formatted
+output, the metadata parser ignored root-element attributes (which is where
+on-prem actually puts the dump payload), and the list response carried a
+10+KB HTML summary per entry that blew past tool-output token limits.
+
+### Fixed
+
+- **`parseDumpChapters` now handles boxed (pipe-wrapped) dump output.**
+  Formatted dumps on on-prem releases ship each line wrapped in `|content|`
+  with chapter separators of `-` rules. The parser now unboxes the line
+  before matching titles and skips separator runs, so chapter extraction
+  works on both bare and boxed output. v0.5.1 returned `chapters: {}` for
+  every real dump.
+- **`parseDumpMetadata` now extracts root-element attributes.** Real
+  on-prem ADT returns the dump payload as attributes on the root element
+  (`title`, `error`, `terminatedProgram`, `author`, `datetime`,
+  `serverInstance`, …) rather than as child elements. The parser scans the
+  root, filters `xmlns` declarations, and merges the attributes into
+  `fields`. The commonly-needed values (`runtimeError`, `program`, `user`,
+  `time`, `server`, `title`) are also lifted to the top level of the
+  response so the agent doesn't have to probe the map.
+- **`adt_list_dumps` no longer ships per-entry `summary` HTML.** The summary
+  on real systems is a 10+KB HTML chunk (chapter index + back-link) that on
+  a 20-row list bloats responses past the tool-output token limit. Stripped
+  from list responses; agents that need detail call `adt_get_dump` (which
+  returns structured chapters anyway).
+
 ## [0.5.1]
 
 Verifying v0.5.0 against a real on-prem ADT system (NetWeaver-class) exposed
