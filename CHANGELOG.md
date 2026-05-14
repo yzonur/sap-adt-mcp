@@ -6,6 +6,27 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.5.3]
+
+Hot-fix for a CSRF handshake bug that broke every state-changing tool against
+on-prem ADT. Verified against E4D.
+
+### Fixed
+
+- **CSRF discovery handshake no longer strips its own `Fetch` header.** The
+  `PROTECTED_HEADERS` filter on `#send` (added in the adt_request security
+  pass to stop callers from forging `Authorization` / `Cookie` /
+  `X-CSRF-Token`) was also stripping the `X-CSRF-Token: Fetch` header that
+  `#fetchCsrf` itself attaches to the discovery GET. SAP returned the
+  AtomSvc service document without a token, and every write (`adt_create_object`,
+  `adt_set_source`, `adt_activate`, `adt_lock`, `adt_create_transport`,
+  `adt_delete_object`, `adt_release_transport`, `adt_pretty_print`, ATC runs)
+  failed with `Failed to fetch CSRF token (status 200): <?xml ...>`. The fix
+  routes the internal Fetch header through a separate `internalHeaders`
+  channel that bypasses the filter; caller-supplied `X-CSRF-Token` from
+  `adt_request` is still stripped. Two undici `MockAgent` regression tests
+  pin both sides.
+
 ## [0.5.2]
 
 Second round of dump-tool fixes. v0.5.1 fixed the network-level bugs but a
