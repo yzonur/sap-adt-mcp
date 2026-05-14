@@ -112,13 +112,18 @@ export class AdtClient {
   }
 
   async #fetchCsrf() {
+    // Pass the fetch header via `internalHeaders` so #send doesn't strip it
+    // through the PROTECTED_HEADERS filter (that filter exists to stop
+    // adt_request callers from forging Authorization/Cookie/X-CSRF-Token —
+    // it must not apply to the client's own CSRF handshake).
     const res = await this.#send(
       "GET",
       DISCOVERY_PATH,
       null,
       null,
-      { "X-CSRF-Token": "Fetch" },
-      "application/atomsvc+xml"
+      {},
+      "application/atomsvc+xml",
+      { "X-CSRF-Token": "Fetch" }
     );
     const token = res.headers.get("x-csrf-token");
     if (!token || token.toLowerCase() === "required") {
@@ -130,7 +135,7 @@ export class AdtClient {
     this.csrfToken = token;
   }
 
-  async #send(method, adtPath, query, body, extraHeaders, accept) {
+  async #send(method, adtPath, query, body, extraHeaders, accept, internalHeaders) {
     const url = this.#buildUrl(adtPath, query);
     const headers = new Headers();
     headers.set("Authorization", this.authHeader);
@@ -149,6 +154,13 @@ export class AdtClient {
     for (const [k, v] of Object.entries(extraHeaders)) {
       if (PROTECTED_HEADERS.has(k.toLowerCase())) continue;
       headers.set(k, v);
+    }
+    // Internal headers come from the client itself (e.g. the X-CSRF-Token:
+    // Fetch handshake) and are trusted — they bypass the protection filter.
+    if (internalHeaders) {
+      for (const [k, v] of Object.entries(internalHeaders)) {
+        headers.set(k, v);
+      }
     }
 
     let reqBody;
