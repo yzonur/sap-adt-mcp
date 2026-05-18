@@ -8,7 +8,8 @@ import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
 export const tools = [
   {
     name: "adt_activate",
-    description: "Activate one or more ABAP objects.",
+    description:
+      "Activate one or more ABAP objects. In multi-developer scenarios where the object's components are locked in a separate task under the same transport, set processRedoneOOSourceVersionOnly=true to ask SAP to re-activate only the redone OO source versions (bypasses the 'Object components locked in request and separate task' 403).",
     inputSchema: {
       type: "object",
       properties: {
@@ -25,6 +26,16 @@ export const tools = [
             },
             required: ["name", "type"],
           },
+        },
+        processRedoneOOSourceVersionOnly: {
+          type: "boolean",
+          description:
+            "Forward as isProcessRedoneOOSourceVerOnly=true on the ADT activate URL. Use to recover from CTS 'Object components locked in request and separate task' 403s.",
+        },
+        preauditRequested: {
+          type: "boolean",
+          description:
+            "Override the preauditRequested query parameter. Defaults to true.",
         },
       },
       required: ["objects"],
@@ -80,7 +91,7 @@ export const tools = [
   {
     name: "adt_lock",
     description:
-      "Acquire a stateful lock on an ABAP object. Returns a lockHandle to reuse across multiple adt_set_source calls.",
+      "Acquire a stateful lock on an ABAP object. Returns a lockHandle to reuse across multiple adt_set_source calls. On CTS conflicts the error includes longText and t100 details (which TR is blocking, who owns it) so the caller can recover.",
     inputSchema: {
       type: "object",
       properties: {
@@ -91,6 +102,11 @@ export const tools = [
         accessMode: {
           type: "string",
           description: "Lock access mode. Default: MODIFY.",
+        },
+        transport: {
+          type: "string",
+          description:
+            "Transport request ID (sent as corrNr on the LOCK call). Use to scope the lock to a specific TR when the object is locked in another task under the same TR.",
         },
       },
       required: ["object", "type"],
@@ -126,10 +142,20 @@ export function register({ getClient }) {
       const body =
         `<?xml version="1.0" encoding="UTF-8"?>` +
         `<adtcore:objectReferences xmlns:adtcore="http://www.sap.com/adt/core">${refs}</adtcore:objectReferences>`;
+      const preaudit =
+        typeof args.preauditRequested === "boolean"
+          ? args.preauditRequested
+            ? "true"
+            : "false"
+          : "true";
+      const query = { method: "activate", preauditRequested: preaudit };
+      if (args.processRedoneOOSourceVersionOnly) {
+        query.isProcessRedoneOOSourceVerOnly = "true";
+      }
       const res = await client.request({
         method: "POST",
         path: "/sap/bc/adt/activation",
-        query: { method: "activate", preauditRequested: "true" },
+        query,
         headers: { "Content-Type": "application/xml" },
         body,
       });
@@ -188,7 +214,7 @@ export function register({ getClient }) {
         name: args.object,
         group: args.group,
       });
-      const lock = await acquireLock(client, objUri);
+      const lock = await acquireLock(client, objUri, { corrNr: args.transport });
       if (!lock.ok) {
         return errorResult(sys, lock.status, lock.body, lock.contentType, {
           stage: "lock",
@@ -229,7 +255,10 @@ export function register({ getClient }) {
         name: args.object,
         group: args.group,
       });
-      const lock = await acquireLock(client, objUri, args.accessMode ?? "MODIFY");
+      const lock = await acquireLock(client, objUri, {
+        accessMode: args.accessMode ?? "MODIFY",
+        corrNr: args.transport,
+      });
       if (!lock.ok) {
         return errorResult(sys, lock.status, lock.body, lock.contentType, {
           stage: "lock",
@@ -242,6 +271,7 @@ export function register({ getClient }) {
         objectUri: objUri,
         lockHandle: lock.handle,
         accessMode: args.accessMode ?? "MODIFY",
+        ...(args.transport ? { transport: args.transport } : {}),
       });
     },
 

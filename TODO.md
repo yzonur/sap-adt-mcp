@@ -6,6 +6,19 @@ surfaces any `### ` section that still has unchecked items at the top of the
 next session, so keep section headings stable and check items off as they
 land — don't rewrite the file structure unless you mean to.
 
+### MCP tool bug fixes — discovered & fixed 2026-05-15
+
+Bugs surfaced while working with `/FGLR/CL_FLEET_TRANSFER` (~147 KB class) against
+the E4D test system. All seven verified against current code and resolved.
+
+- [x] **Bug 3 — `adt_set_source` partial-write guard.** Added `detectPartialSource()` in `src/tools/source.js` plus `acknowledgePartial` bypass flag. Tool description now warns about atomic replace. Unit tests in `test/source-guard.test.js`.
+- [x] **Bug 5 — `adt_lock` strips LONGTEXT + T100KEY from CTS errors.** `parseAdtError` in `src/adt-error.js` now extracts `<entry key="LONGTEXT">` / `<property name="LONGTEXT">` (HTML-stripped) plus `T100KEY-ID/NO/V1..V4`. Surfaced as `error.properties.longText` / `error.properties.t100`. Tests in `test/adt-error.test.js`.
+- [x] **Bug 6 — `adt_lock` doesn't accept `corrNr`.** `adt_lock` schema now exposes `transport`. `acquireLock(client, path, options)` accepts `{ accessMode, corrNr }` (string second arg still works). `adt_set_source` and `adt_delete_object` also forward `transport` to the LOCK call for symmetry. Tests in `test/lock.test.js`.
+- [x] **Bug 2 — `adt_activate` missing `processRedoneOOSourceVersionOnly`.** Schema now exposes `processRedoneOOSourceVersionOnly` (→ `isProcessRedoneOOSourceVerOnly=true` on query) and `preauditRequested` override. Tests in `test/lifecycle-activate.test.js`.
+- [x] **Bug 4 — `adt_get_source` has no pagination.** Added `firstLine` / `lastLine` (clamped to source bounds) and `onlyMethod` parameters. Response now includes `totalLines`, `totalBytes`, `firstLine`, `lastLine`, `scope`, `truncated`. Tests in `test/source-pagination.test.js`.
+- [x] **Bug 1 — `adt_set_source` body cap blocks large classes.** Added `adt_set_source_chunked` tool: caller acquires lock with `adt_lock`, sends chunks with stable `bufferId` + sequential `chunkIndex`, commits with `commit=true`. Server-side buffer with 10-min TTL, 4 MB cap, out-of-order rejection, partial-source guard at commit. Tests in `test/source-chunked.test.js`.
+- [x] **Bug 7 — method-level class URI.** Investigation: SAP backend does not expose a method-scope source endpoint — ADT Eclipse fetches the full implementations include and navigates client-side. The `onlyMethod` parameter on `adt_get_source` (added by Bug 4) is the practical equivalent: server fetches the include, slices the METHOD … ENDMETHOD block client-side and returns just that slice with line metadata.
+
 ### Tool additions — high priority
 
 - [ ] `adt_grep_source` — full-text source search (regex) scoped to package / TR / system. Today `adt_search_objects` only matches names; this is the missing half. Needed for Clean Core grading to actually inspect code patterns at scale.
