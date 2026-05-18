@@ -6,6 +6,66 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.5.4]
+
+Seven bugs surfaced in one real-world ABAP refactor session against a ~147 KB
+class (`/FGLR/CL_FLEET_TRANSFER`) on on-prem E4D. All sit at the MCP↔ADT seam
+and were invisible to the pure-unit-test suite. Full write-up in
+[docs/bugfix-2026-05-15.md](docs/bugfix-2026-05-15.md).
+
+### Added
+
+- **`adt_set_source_chunked`** — multi-call protocol for writing class bodies
+  that exceed a single MCP tool-call payload. Caller acquires the lock with
+  `adt_lock`, sends chunks under a stable `bufferId` with sequential
+  `chunkIndex`, commits with `commit=true`. Server-side buffer with 10-min TTL,
+  4 MB total cap, strict ordering. Partial-source guard runs at commit.
+- **`adt_get_source.firstLine` / `lastLine` / `onlyMethod`** — pagination and
+  method-scope slicing. Response now reports `totalLines`, `totalBytes`,
+  `firstLine`, `lastLine`, `scope`, `truncated`. `onlyMethod` is case-insensitive
+  and skips declarations in `CLASS … DEFINITION`.
+- **`adt_set_source.acknowledgePartial`** — explicit bypass for the new
+  partial-write guard (Fixed below).
+- **`adt_activate.processRedoneOOSourceVersionOnly` / `preauditRequested`** —
+  forwarded to ADT as `isProcessRedoneOOSourceVerOnly=true` / `preauditRequested`.
+  Recovers from "Object components locked in request and separate task" 403s
+  in multi-developer transports.
+- **`adt_lock.transport`** — forwards as `corrNr=<TR>` to scope the lock to a
+  specific transport. `adt_set_source` and `adt_delete_object` now forward
+  their `transport` parameter to the LOCK call as well, not just to the
+  PUT/DELETE.
+
+### Fixed
+
+- **`adt_set_source` partial-write guard.** PUT on ADT is atomic — it replaces
+  the entire include. Previously a caller could send a chunk thinking it was a
+  diff and silently delete the rest of the include. `detectPartialSource()`
+  now rejects input whose first non-comment line is not a recognised
+  top-level ABAP keyword (`CLASS`, `INTERFACE`, `REPORT`, `PROGRAM`,
+  `FUNCTION`, `FORM`, `MODULE`, `METHOD`, `DEFINE`, `DATA`, …). Bypass with
+  `acknowledgePartial: true`.
+- **`parseAdtError` no longer drops CTS diagnostics.** ADT lock failures
+  carry `LONGTEXT` (human-readable diagnosis) and `T100KEY-V1..V4` (the
+  blocking transport's ID, owner, suggested resolution) in either
+  `<entry key="…">` or `<property name="…">` shapes. Both are now extracted
+  (HTML-stripped) and surfaced as `error.properties.longText` and
+  `error.properties.t100.{id, number, vars}`.
+
+### Investigated
+
+- **Method-scope class URI does not exist.** Seven variants of
+  `/sap/bc/adt/oo/classes/<class>/includes/method/<method>` all return 404 —
+  SAP's ADT REST has no method-scope source endpoint. ADT in Eclipse fetches
+  the full implementations include and navigates client-side. The new
+  `adt_get_source.onlyMethod` parameter is the practical equivalent.
+
+### Tests
+
+54 new unit tests across `test/source-guard.test.js`,
+`test/source-pagination.test.js`, `test/source-chunked.test.js`,
+`test/lifecycle-activate.test.js`, `test/lock.test.js`, plus extensions to
+`test/adt-error.test.js`. Suite at 141/141.
+
 ## [0.5.3]
 
 Hot-fix for a CSRF handshake bug that broke every state-changing tool against
