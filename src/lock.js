@@ -1,8 +1,17 @@
-export async function acquireLock(client, objectPath, accessMode = "MODIFY") {
+export async function acquireLock(client, objectPath, accessModeOrOptions = "MODIFY") {
+  // Backwards-compatible: callers may pass either a string accessMode or an
+  // options object { accessMode, corrNr }.
+  const opts =
+    typeof accessModeOrOptions === "string"
+      ? { accessMode: accessModeOrOptions }
+      : accessModeOrOptions ?? {};
+  const accessMode = opts.accessMode ?? "MODIFY";
+  const query = { _action: "LOCK", accessMode };
+  if (opts.corrNr) query.corrNr = opts.corrNr;
   const res = await client.request({
     method: "POST",
     path: objectPath,
-    query: { _action: "LOCK", accessMode },
+    query,
     headers: { "X-sap-adt-sessiontype": "stateful" },
     accept: "application/vnd.sap.as+xml;dataname=com.sap.adt.lock.Result",
   });
