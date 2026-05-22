@@ -36,6 +36,11 @@ export const tools = [
           type: "string",
           description: "Override for the Accept header (e.g. 'text/plain' for ABAP source).",
         },
+        contentType: {
+          type: "string",
+          description:
+            "Override for the Content-Type header (e.g. 'application/vnd.sap.adt.domains.v2+xml'). Shortcut for setting `headers['Content-Type']`; explicit `headers['Content-Type']` wins if both are given.",
+        },
       },
       required: ["path"],
     },
@@ -67,12 +72,21 @@ export function register({ getClient }) {
           true
         );
       }
+      let headers = args.headers;
+      if (typeof args.contentType === "string" && args.contentType.length > 0) {
+        const hasExplicitCT =
+          headers &&
+          Object.keys(headers).some((k) => k.toLowerCase() === "content-type");
+        if (!hasExplicitCT) {
+          headers = { ...(headers ?? {}), "Content-Type": args.contentType };
+        }
+      }
       const res = await client.request({
         method: args.method,
         path: args.path,
         query: args.query,
         body: args.body,
-        headers: args.headers,
+        headers,
         accept: args.accept,
       });
       const text = await res.text();

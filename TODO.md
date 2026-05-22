@@ -19,6 +19,15 @@ the E4D test system. All seven verified against current code and resolved.
 - [x] **Bug 1 — `adt_set_source` body cap blocks large classes.** Added `adt_set_source_chunked` tool: caller acquires lock with `adt_lock`, sends chunks with stable `bufferId` + sequential `chunkIndex`, commits with `commit=true`. Server-side buffer with 10-min TTL, 4 MB cap, out-of-order rejection, partial-source guard at commit. Tests in `test/source-chunked.test.js`.
 - [x] **Bug 7 — method-level class URI.** Investigation: SAP backend does not expose a method-scope source endpoint — ADT Eclipse fetches the full implementations include and navigates client-side. The `onlyMethod` parameter on `adt_get_source` (added by Bug 4) is the practical equivalent: server fetches the include, slices the METHOD … ENDMETHOD block client-side and returns just that slice with line metadata.
 
+### MCP tool bugs — discovered & fixed 2026-05-22
+
+Surfaced while creating DDIC domain + DE (`/FGLR/DM_FLTTRSCNR`, `/FGLR/DE_FLTTRSCNR`) on E4D for Fleet Transfer scenario refactor. All four resolved; tests in `test/mcp-bug-fixes.test.js`.
+
+- [x] **`adt_request` silently drops `contentType` parameter.** Added top-level `contentType` shortcut in `src/tools/request.js` mirroring `accept`. Handler folds it into `headers["Content-Type"]`; an explicit `headers["Content-Type"]` still wins.
+- [x] **`adt_get_transport` crashes on the `transportId` parameter.** `src/tools/transports.js` now validates `args.transport` before `.toUpperCase()` and returns a textResult error pointing out the correct field name. Same guard added to `adt_release_transport`.
+- [x] **`adt_search_objects` returns 500 "No service found for ID quickSearch" on E4D.** `src/tools/discovery.js` now detects the 500 body match `/No service found for ID quickSearch/i` and retries the same endpoint without the `operation` query (legacy informationsystem/search shape). Response carries `operation: "legacy"` so the caller can tell the fallback fired.
+- [x] **`adt_activate` schema error message is opaque.** `src/tools/lifecycle.js` validates `objects` is a non-empty array of `{name, type}` before iterating and returns a friendly textResult — including a hint about the wrong singular `objectName`/`objectType` shape.
+
 ### Tool additions — high priority
 
 - [ ] `adt_grep_source` — full-text source search (regex) scoped to package / TR / system. Today `adt_search_objects` only matches names; this is the missing half. Needed for Clean Core grading to actually inspect code patterns at scale.
@@ -47,3 +56,4 @@ the E4D test system. All seven verified against current code and resolved.
 - [ ] Read-only result cache (30 s – 2 min TTL) for repeated calls in a single agent session. `list_packages`, `search_objects`, `list_systems` are the obvious wins.
 - [ ] Cost / token awareness — soft output caps for large lists, "top N + summary" mode, opt-in `full=true`. A reckless `list_packages` against a big root currently floods context.
 - [ ] ECC-specific prompt set — `classic-abap-review`, `modification-audit`, `user-exit-finder`. Clean Core prompts are S/4-only and ECC shops get less day-one value than they could.
+- [ ] **mcp-whereused-ddic-structure** — `adt_where_used` DDIC structure (type=table, TADIR TABL) için 400 "Content type missing" döndürüyor. Tool: `adt_where_used`. Repro: `{object:'/FGLR/S_MEAS_CHARACTERISTIC', type:'table', system:'E4D'}`. Beklenen: usage references listesi. Dönen: HTTP 400 ExceptionResourceBadRequest. Muhtemelen request'te `Content-Type` header'ı eksik gönderiliyor. Tarih: 2026-05-22.
