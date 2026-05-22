@@ -101,18 +101,30 @@ export function register({ getClient }) {
     adt_search_objects: async (args) => {
       const { client, name: sys } = getClient(args.system);
       const maxResults = args.maxResults ?? 50;
-      const query = {
-        operation: "quickSearch",
+      const baseQuery = {
         query: args.query,
         maxResults: String(maxResults),
       };
-      if (args.objectType) query.objectType = args.objectType;
-      const res = await client.request({
-        method: "POST",
-        path: "/sap/bc/adt/repository/informationsystem/search",
-        query,
-      });
-      const text = await res.text();
+      if (args.objectType) baseQuery.objectType = args.objectType;
+
+      const tryRequest = (extra) =>
+        client.request({
+          method: "POST",
+          path: "/sap/bc/adt/repository/informationsystem/search",
+          query: { ...baseQuery, ...extra },
+        });
+
+      let res = await tryRequest({ operation: "quickSearch" });
+      let text = await res.text();
+      // Older NetWeaver releases don't deploy the quickSearch operation and
+      // return a 500 "No service found for ID quickSearch". Fall back to the
+      // operation-less legacy search endpoint shape.
+      let usedFallback = false;
+      if (!res.ok && /No service found for ID\s+quickSearch/i.test(text)) {
+        usedFallback = true;
+        res = await tryRequest({});
+        text = await res.text();
+      }
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
       const refs = parseObjectReferences(text);
       return jsonResult({
@@ -121,6 +133,7 @@ export function register({ getClient }) {
         count: refs.length,
         hasMore: refs.length >= maxResults,
         results: refs,
+        ...(usedFallback ? { operation: "legacy" } : {}),
       });
     },
 

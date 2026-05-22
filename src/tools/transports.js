@@ -1,5 +1,5 @@
 import { escapeXml } from "../xml.js";
-import { errorResult, jsonResult } from "../result.js";
+import { errorResult, jsonResult, textResult } from "../result.js";
 import { SYSTEM_HINT } from "./_shared.js";
 
 export const tools = [
@@ -95,6 +95,13 @@ export function register({ getClient }) {
     },
 
     adt_get_transport: async (args) => {
+      if (typeof args.transport !== "string" || args.transport.length === 0) {
+        return textResult(
+          "adt_get_transport: `transport` is required (string, e.g. 'E4DK900123'). " +
+            "Did you pass `transportId`? The field is named `transport`.",
+          true
+        );
+      }
       const { client, name: sys } = getClient(args.system);
       const res = await client.request({
         path: `/sap/bc/adt/cts/transportrequests/${encodeURIComponent(args.transport.toUpperCase())}`,
@@ -135,6 +142,13 @@ export function register({ getClient }) {
     },
 
     adt_release_transport: async (args) => {
+      if (typeof args.transport !== "string" || args.transport.length === 0) {
+        return textResult(
+          "adt_release_transport: `transport` is required (string, e.g. 'E4DK900123'). " +
+            "Did you pass `transportId`? The field is named `transport`.",
+          true
+        );
+      }
       const { client, name: sys } = getClient(args.system);
       const id = args.transport.toUpperCase();
       const res = await client.request({

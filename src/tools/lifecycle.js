@@ -132,6 +132,23 @@ export const tools = [
 export function register({ getClient }) {
   return {
     adt_activate: async (args) => {
+      if (!Array.isArray(args.objects) || args.objects.length === 0) {
+        return textResult(
+          "adt_activate: `objects` is required — non-empty array of { name, type[, group] }. " +
+            "Did you pass singular `objectName`/`objectType`? Wrap them: " +
+            "`objects: [{ name: '…', type: '…' }]`.",
+          true
+        );
+      }
+      for (let i = 0; i < args.objects.length; i++) {
+        const o = args.objects[i];
+        if (!o || typeof o.name !== "string" || typeof o.type !== "string") {
+          return textResult(
+            `adt_activate: objects[${i}] must be { name: string, type: string }.`,
+            true
+          );
+        }
+      }
       const { client, name: sys } = getClient(args.system);
       const refs = args.objects
         .map((o) => {
