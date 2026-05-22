@@ -6,6 +6,37 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.5.5]
+
+Four MCP-seam bugs surfaced while creating DDIC objects (`/FGLR/DM_FLTTRSCNR`,
+`/FGLR/DE_FLTTRSCNR`) on on-prem E4D for the Fleet Transfer scenario refactor.
+All four are input-validation / shortcut gaps that turned recoverable mistakes
+into opaque crashes. Tests in `test/mcp-bug-fixes.test.js`.
+
+### Added
+
+- **`adt_request.contentType`** — top-level shortcut for the `Content-Type`
+  header, mirroring `accept`. Folds into `headers["Content-Type"]`; an explicit
+  `headers["Content-Type"]` still wins. Previously callers had to know to set
+  `headers` and got a silent 415 when they reached for the obvious `contentType`
+  field.
+
+### Fixed
+
+- **`adt_get_transport` / `adt_release_transport` crash on wrong field name.**
+  Both handlers now validate `args.transport` is a non-empty string before
+  calling `.toUpperCase()` and return a textResult that names the correct field
+  (so callers passing `transportId` get a useful error, not
+  `Cannot read properties of undefined`).
+- **`adt_search_objects` 500 on systems without `quickSearch`.** Detects the
+  500 body match `/No service found for ID quickSearch/i` and retries the same
+  endpoint without the `operation` query (legacy informationsystem/search
+  shape). Response carries `operation: "legacy"` when the fallback fires.
+- **`adt_activate` opaque error on wrong argument shape.** Validates `objects`
+  is a non-empty array of `{name, type}` before iterating. Callers passing the
+  singular `objectName` / `objectType` shape now get a clear hint instead of
+  `Cannot read properties of undefined (reading 'map')`.
+
 ## [0.5.4]
 
 Seven bugs surfaced in one real-world ABAP refactor session against a ~147 KB
