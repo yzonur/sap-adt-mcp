@@ -30,10 +30,11 @@ Surfaced while creating DDIC domain + DE (`/FGLR/DM_FLTTRSCNR`, `/FGLR/DE_FLTTRS
 
 ### Tool additions — high priority
 
-_All shipped in v0.6.0. Endpoints absent on the E4D test system (SNOTE, SM12
-locks, jobs/spool) ship as best-effort with graceful `available:false`
-degradation — useful on S/4 systems that expose them, unverified there. See
-CHANGELOG 0.6.0 for the per-tool live-verified vs best-effort breakdown._
+_All shipped in v0.6.0 — released to GitHub (tag v0.6.0) and published to npm on
+2026-06-02. Endpoints absent on the E4D test system (SNOTE, SM12 locks,
+jobs/spool) ship as best-effort with graceful `available:false` degradation —
+useful on S/4 systems that expose them, unverified there. See CHANGELOG 0.6.0
+for the per-tool live-verified vs best-effort breakdown._
 
 - [x] `adt_grep_source` — full-text source search (regex) scoped to package / TR / system. _Verified live on E4D._
 - [x] `adt_list_versions` + `adt_compare_versions` — ADT versions API. compare = inactive-vs-active source diff (_verified live_); list = graceful `available:false` (no `/versions` REST on E4D).
