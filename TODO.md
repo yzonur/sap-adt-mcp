@@ -30,14 +30,19 @@ Surfaced while creating DDIC domain + DE (`/FGLR/DM_FLTTRSCNR`, `/FGLR/DE_FLTTRS
 
 ### Tool additions — high priority
 
-- [ ] `adt_grep_source` — full-text source search (regex) scoped to package / TR / system. Today `adt_search_objects` only matches names; this is the missing half. Needed for Clean Core grading to actually inspect code patterns at scale.
-- [ ] `adt_list_versions` + `adt_compare_versions` — ADT versions API (`/versions`). Diff active vs inactive, or current vs previous. "Who/when last changed this method" is a daily question.
-- [ ] `adt_run_atc_package` / `adt_run_atc_transport` — bulk ATC by container. Current `adt_run_atc` is per-object; real workflows run ATC for a whole TR or package. The `clean_core_review` prompt is currently hamstrung by this gap.
-- [ ] `adt_get_note` + `adt_implement_note` + `adt_check_note_status` — SAP Note (SNOTE) integration. Devs spend a lot of time here; agent value is high.
-- [ ] `adt_cds_dependencies` + `adt_cds_data_preview` + `adt_list_released_apis` — CDS-specific tooling. Modern SAP is CDS-first; agent currently can't answer "which released views exist" or "what does this CDS expose."
-- [ ] `adt_list_locks` (SM12 analog) + `adt_list_inactive_objects` — "what's locked / what's not yet active in this package" — basic situational awareness.
-- [ ] `adt_schedule_job` + `adt_read_spool` — background job submit + read its spool output. Necessary for long-running tasks (migrations, mass updates).
-- [ ] `adt_rap_scaffold` — generate a full RAP stack (CDS + behavior def + service def + service binding + implementation class) from a spec. Builds on the existing `adt_create_object` primitives. Would make `/clean_core_create` actually one-shot for the modern flow.
+_All shipped in v0.6.0. Endpoints absent on the E4D test system (SNOTE, SM12
+locks, jobs/spool) ship as best-effort with graceful `available:false`
+degradation — useful on S/4 systems that expose them, unverified there. See
+CHANGELOG 0.6.0 for the per-tool live-verified vs best-effort breakdown._
+
+- [x] `adt_grep_source` — full-text source search (regex) scoped to package / TR / system. _Verified live on E4D._
+- [x] `adt_list_versions` + `adt_compare_versions` — ADT versions API. compare = inactive-vs-active source diff (_verified live_); list = graceful `available:false` (no `/versions` REST on E4D).
+- [x] `adt_run_atc_package` / `adt_run_atc_transport` — bulk ATC by container via the full worklist flow. _Verified live on E4D (345 findings)._
+- [x] `adt_get_note` + `adt_implement_note` + `adt_check_note_status` — SAP Note (SNOTE) integration. _Best-effort; needs the SNOTE ADT plug-in (S/4), absent on E4D._
+- [x] `adt_cds_dependencies` + `adt_cds_data_preview` + `adt_list_released_apis` — CDS tooling. released-APIs + dependency/preview routes _verified live on E4D_ (positive preview needs CDS content E4D lacks).
+- [x] `adt_list_locks` (SM12 analog) + `adt_list_inactive_objects` — inactive-objects _verified live_; SM12 locks graceful `available:false` (no enqueue REST on E4D).
+- [x] `adt_schedule_job` + `adt_read_spool` — background job submit + spool read. _Best-effort; no ADT background-processing REST on E4D._
+- [x] `adt_rap_scaffold` — generate a full RAP stack (CDS + behavior def + impl class + service def + service binding) from a spec. Defaults to `dryRun:true`. _Generation verified live; write path unverified (creation out of scope this pass)._
 
 ### Tool additions — nice-to-have
 

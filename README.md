@@ -35,14 +35,23 @@ prompts** that turn the tool surface into outcome-shaped slash commands
 | --- | --- |
 | Connection | `adt_list_systems`, `adt_ping` |
 | Source CRUD | `adt_get_source`, `adt_set_source` |
-| Quality | `adt_syntax_check`, `adt_pretty_print`, `adt_run_unit_tests`, `adt_run_atc` |
-| Lifecycle | `adt_create_object`, `adt_delete_object`, `adt_activate`, `adt_lock`, `adt_unlock` |
-| Discovery | `adt_browse_package`, `adt_list_packages`, `adt_search_objects`, `adt_where_used` |
+| Quality | `adt_syntax_check`, `adt_pretty_print`, `adt_run_unit_tests`, `adt_run_atc`, `adt_run_atc_package`, `adt_run_atc_transport` |
+| Lifecycle | `adt_create_object`, `adt_delete_object`, `adt_activate`, `adt_lock`, `adt_unlock`, `adt_list_inactive_objects` |
+| Versions | `adt_list_versions`, `adt_compare_versions` |
+| Discovery | `adt_browse_package`, `adt_list_packages`, `adt_search_objects`, `adt_grep_source`, `adt_where_used` |
+| CDS | `adt_cds_data_preview`, `adt_cds_dependencies`, `adt_list_released_apis` |
 | Cross-system | `adt_compare_source`, `adt_transport_diff` |
 | Transports | `adt_list_transports`, `adt_get_transport`, `adt_create_transport`, `adt_release_transport` |
 | Runtime errors | `adt_list_dumps`, `adt_get_dump` |
 | Data | `adt_read_table` |
+| Generation | `adt_rap_scaffold` |
+| Experimental¹ | `adt_get_note`, `adt_check_note_status`, `adt_implement_note`, `adt_list_locks`, `adt_schedule_job`, `adt_read_spool` |
 | Escape hatch | `adt_request` |
+
+¹ Experimental tools target ADT endpoints (SNOTE, SM12 enqueues, SM36/SP01)
+that classic NetWeaver does not expose; on such systems they return
+`available:false` with a fall-back hint rather than failing. They work where the
+backing service exists (typically S/4HANA).
 
 **Multi-system aware.** One config, many SAP systems (DEV / QAS / PRD or
 landscape-wide); switch with the `system` argument or compare across two with

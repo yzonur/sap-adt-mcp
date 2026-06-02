@@ -40,6 +40,11 @@ const TYPE_ALIASES = {
   behaviordef: "BDEF",
   behaviordefinition: "BDEF",
   bdef: "BDEF",
+  servicedefinition: "SRVD",
+  servicedef: "SRVD",
+  srvd: "SRVD",
+  servicebinding: "SRVB",
+  srvb: "SRVB",
   messageclass: "MSAG",
   msag: "MSAG",
 };
@@ -109,6 +114,10 @@ export function objectUri({ type, name, group }) {
       return `/sap/bc/adt/ddic/ddlx/sources/${enc(n)}`;
     case "BDEF":
       return `/sap/bc/adt/bo/behaviordefinitions/${enc(n)}`;
+    case "SRVD":
+      return `/sap/bc/adt/ddic/srvd/sources/${enc(n)}`;
+    case "SRVB":
+      return `/sap/bc/adt/businessservices/bindings/${enc(n)}`;
     case "MSAG":
       return `/sap/bc/adt/messageclasses/${enc(n)}`;
     default:

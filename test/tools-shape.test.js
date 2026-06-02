@@ -11,6 +11,12 @@ import * as transports from "../src/tools/transports.js";
 import * as runtime from "../src/tools/runtime.js";
 import * as data from "../src/tools/data.js";
 import * as request from "../src/tools/request.js";
+import * as versions from "../src/tools/versions.js";
+import * as notes from "../src/tools/notes.js";
+import * as cds from "../src/tools/cds.js";
+import * as worklist from "../src/tools/worklist.js";
+import * as jobs from "../src/tools/jobs.js";
+import * as rap from "../src/tools/rap.js";
 
 const MODULES = {
   connection,
@@ -23,6 +29,12 @@ const MODULES = {
   runtime,
   data,
   request,
+  versions,
+  notes,
+  cds,
+  worklist,
+  jobs,
+  rap,
 };
 
 const fakeCtx = {
@@ -81,7 +93,27 @@ test("expected new tools exist", () => {
   for (const mod of Object.values(MODULES)) {
     for (const t of mod.tools) allNames.add(t.name);
   }
-  for (const name of ["adt_list_dumps", "adt_get_dump", "adt_read_table"]) {
+  for (const name of [
+    "adt_list_dumps",
+    "adt_get_dump",
+    "adt_read_table",
+    "adt_grep_source",
+    "adt_list_versions",
+    "adt_compare_versions",
+    "adt_run_atc_package",
+    "adt_run_atc_transport",
+    "adt_get_note",
+    "adt_check_note_status",
+    "adt_implement_note",
+    "adt_cds_data_preview",
+    "adt_cds_dependencies",
+    "adt_list_released_apis",
+    "adt_list_inactive_objects",
+    "adt_list_locks",
+    "adt_schedule_job",
+    "adt_read_spool",
+    "adt_rap_scaffold",
+  ]) {
     assert.ok(allNames.has(name), `${name} should be registered`);
   }
 });

@@ -6,6 +6,94 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.6.0]
+
+The high-priority tool backlog, in one pass — eighteen new tools across six new
+modules plus extensions to discovery and quality. Every tool was developed
+against the on-prem E4D test system; the notes below mark which were verified
+live against real ADT responses and which are best-effort against endpoints E4D
+does not expose (they ship with graceful `available:false` degradation and are
+genuinely useful on systems — typically S/4HANA — that do expose them).
+
+### Added — source & analysis
+
+- **`adt_grep_source`** — full-text regex search across ABAP source, the missing
+  half of `adt_search_objects` (which only matches names). Scope to a package
+  (optionally recursive), a transport, or an explicit object list; fetches
+  `/source/main` for each source-bearing object (PROG/CLAS/INTF/INCL/DDLS/DCLS/
+  DDLX/BDEF) and returns matching lines as object + line + text. Bounded by
+  `maxObjects`/`maxMatches` with explicit truncation flags; unreadable objects
+  surface under `errors` rather than failing the run. _Verified live on E4D._
+- **`adt_run_atc_package` / `adt_run_atc_transport`** — bulk ATC via the full
+  worklist flow (create worklist → run → fetch results), the container-level
+  counterpart to the per-object `adt_run_atc`. Returns parsed findings
+  (check/message/priority/location) plus a priority histogram and the worklist
+  id. `checkVariant` defaults to the system check variant read from ATC
+  customizing. _Verified live on E4D (345 findings over `/FGLR/FLEET`)._
+- **`adt_compare_versions`** — diff two versions of one object's source within a
+  system (defaults to inactive-vs-active — "what did I change but not activate").
+  Reuses the `adt_compare_source` diff engine. _Verified live on E4D._
+- **`adt_list_versions`** — version-history list via `{objectUri}/versions`.
+  On-prem NetWeaver does not expose this sub-resource (E4D returns 404), so the
+  tool reports `available:false` with a pointer to `adt_compare_versions`. _Best-
+  effort; not available on E4D._
+
+### Added — CDS
+
+- **`adt_cds_data_preview`** — preview a CDS view's data by entity name (no SQL),
+  reusing the data-preview parser. _Route verified live on E4D; positive preview
+  unverified (E4D ships no CDS content)._
+- **`adt_cds_dependencies`** — CDS dependency graph via the DDL graphdata
+  endpoint, with optional related-objects. _Route verified live on E4D._
+- **`adt_list_released_apis`** — the API release-state contract catalog
+  (C0/C1/C2/C3 …) from `informationsystem/releasestates`. _Verified live on E4D
+  (12 contracts)._
+
+### Added — situational awareness
+
+- **`adt_list_inactive_objects`** — the "Inactive Objects" worklist (edited but
+  not activated), each object paired with its transport. _Verified live on E4D._
+- **`adt_list_locks`** — SM12 runtime-enqueue analog. No standardized ADT REST
+  exists for runtime enqueues; reports `available:false` with a hint to SM12.
+  _Best-effort; not available on E4D._
+
+### Added — experimental (no ADT REST on E4D — ship with graceful degradation)
+
+- **`adt_get_note` / `adt_check_note_status` / `adt_implement_note`** — SAP Note
+  (Note Assistant) integration. Requires the SNOTE ADT plug-in (modern S/4HANA);
+  classic NetWeaver returns `ExceptionResourceNotFound`, surfaced as
+  `available:false`. `adt_implement_note` is write-gated. _Graceful path verified
+  on E4D; positive paths unverified._
+- **`adt_schedule_job` / `adt_read_spool`** — SM36/SP01 analogs. No standardized
+  ADT background-processing API; reports `available:false` on systems without an
+  extension service. _Graceful path verified on E4D._
+
+### Added — generation
+
+- **`adt_rap_scaffold`** — generate a full RAP stack from a short spec: CDS root
+  view entity → behavior definition (managed) → behavior implementation class →
+  service definition → service binding. **Defaults to `dryRun:true`** — returns
+  the planned names and generated source for review without creating anything;
+  `dryRun:false` creates the source-based artifacts in dependency order
+  (read-only-gated, halts on first failure). The service binding is always
+  plan-only (its publish step is not automated). _Generation/dry-run verified on
+  E4D; write path unverified (object creation was out of scope for this pass)._
+
+### Changed
+
+- **Per-request timeout override.** `AdtClient.request` now accepts an optional
+  `timeoutMs` to override the profile default for a single call. Bulk ATC uses a
+  120 s ceiling — a whole-package run executes synchronously server-side and
+  routinely exceeds the 30 s default.
+- **Read-only allowlist** now permits `POST /sap/bc/adt/atc/*` (worklist analysis)
+  and `POST /sap/bc/adt/datapreview/*` (SELECT/CDS preview). Both are read-only in
+  spirit — they execute no object changes — and were previously blocked in
+  read-only mode, which also affected the existing `adt_run_atc` and
+  `adt_read_table`.
+- **`object-uris.js`** gained `SRVD` (service definition) and `SRVB` (service
+  binding) type mappings, used by the RAP scaffold and available to all
+  URI-resolving tools.
+
 ## [0.5.5]
 
 Four MCP-seam bugs surfaced while creating DDIC objects (`/FGLR/DM_FLTTRSCNR`,
