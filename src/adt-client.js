@@ -12,6 +12,11 @@ const READONLY_POST_PATHS = [
   "/sap/bc/adt/repository/informationsystem/usagereferences",
   "/sap/bc/adt/abapsource/parsers",
   "/sap/bc/adt/checkruns",
+  // ATC worklist analysis: POSTs that create a transient worklist and run
+  // checks but do not modify any repository object — read-only in spirit.
+  "/sap/bc/adt/atc/",
+  // Data preview (OpenSQL SELECT / CDS preview) — read-only query execution.
+  "/sap/bc/adt/datapreview/",
 ];
 
 // Headers a caller is NOT allowed to override via adt_request. Letting these
@@ -52,7 +57,7 @@ export class AdtClient {
         : undefined;
   }
 
-  async request({ method = "GET", path, query, body, headers = {}, accept }) {
+  async request({ method = "GET", path, query, body, headers = {}, accept, timeoutMs }) {
     const upperMethod = method.toUpperCase();
 
     // Resolve the path the same way #buildUrl will resolve it (collapsing
@@ -74,7 +79,7 @@ export class AdtClient {
       await this.#fetchCsrf();
     }
 
-    let res = await this.#send(upperMethod, resolvedPath, query, body, headers, accept);
+    let res = await this.#send(upperMethod, resolvedPath, query, body, headers, accept, undefined, timeoutMs);
 
     if (
       res.status === 403 &&
@@ -82,7 +87,7 @@ export class AdtClient {
     ) {
       this.csrfToken = null;
       await this.#fetchCsrf();
-      res = await this.#send(upperMethod, resolvedPath, query, body, headers, accept);
+      res = await this.#send(upperMethod, resolvedPath, query, body, headers, accept, undefined, timeoutMs);
     }
 
     return res;
@@ -135,7 +140,7 @@ export class AdtClient {
     this.csrfToken = token;
   }
 
-  async #send(method, adtPath, query, body, extraHeaders, accept, internalHeaders) {
+  async #send(method, adtPath, query, body, extraHeaders, accept, internalHeaders, timeoutMs) {
     const url = this.#buildUrl(adtPath, query);
     const headers = new Headers();
     headers.set("Authorization", this.authHeader);
@@ -178,8 +183,9 @@ export class AdtClient {
     const init = { method, headers, body: reqBody };
     if (this.dispatcher) init.dispatcher = this.dispatcher;
 
+    const effectiveTimeout = timeoutMs ?? this.timeoutMs;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), effectiveTimeout);
     init.signal = controller.signal;
 
     if (DEBUG) traceRequest(method, url, headers, reqBody);
@@ -191,7 +197,7 @@ export class AdtClient {
     } catch (err) {
       if (err.name === "AbortError") {
         throw new Error(
-          `ADT request timed out after ${this.timeoutMs}ms: ${method} ${adtPath}`,
+          `ADT request timed out after ${effectiveTimeout}ms: ${method} ${adtPath}`,
           { cause: err }
         );
       }

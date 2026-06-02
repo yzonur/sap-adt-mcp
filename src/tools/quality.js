@@ -1,7 +1,135 @@
 import { objectUri } from "../object-uris.js";
 import { escapeXml } from "../xml.js";
+import { parseObjectReferences } from "../object-references.js";
 import { errorResult, jsonResult } from "../result.js";
 import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
+
+// Parse <atcfinding .../> elements from an ATC worklist result. Attribute names
+// vary slightly across releases — collect them all, normalized without prefix.
+const FINDING_RE = /<(?:atcfinding|atcworklist:finding|finding)\b([\s\S]*?)(?:\/>|>)/gi;
+const FATTR_RE = /([\w:.-]+)\s*=\s*"([^"]*)"/g;
+
+export function parseAtcFindings(xml) {
+  if (typeof xml !== "string") return [];
+  const out = [];
+  for (const m of xml.matchAll(FINDING_RE)) {
+    const attrs = {};
+    for (const a of m[1].matchAll(FATTR_RE)) {
+      if (a[1].startsWith("xmlns")) continue; // skip namespace declarations
+      attrs[a[1].replace(/^[\w]+:/, "")] = a[2];
+    }
+    // Skip the container element if it has no finding-like attributes.
+    if (attrs.checkId || attrs.messageId || attrs.priority || attrs.checkTitle) {
+      out.push(attrs);
+    }
+  }
+  return out;
+}
+
+function summarizeFindings(findings) {
+  const byPriority = {};
+  for (const f of findings) {
+    const p = f.priority ?? "?";
+    byPriority[p] = (byPriority[p] ?? 0) + 1;
+  }
+  return byPriority;
+}
+
+// Read the system default check variant from ATC customizing, used when the
+// caller doesn't pass an explicit checkVariant.
+async function fetchSystemCheckVariant(client) {
+  const res = await client.request({ path: "/sap/bc/adt/atc/customizing" });
+  if (!res.ok) return null;
+  const text = await res.text();
+  const m = text.match(/systemCheckVariant"\s+value="([^"]+)"/);
+  return m ? m[1] : null;
+}
+
+// Build the <atc:run> object-set body for one or more object URIs.
+function buildAtcObjectSet(uris, maxResults) {
+  const refs = uris
+    .map((u) => `<adtcore:objectReference adtcore:uri="${escapeXml(u)}"/>`)
+    .join("");
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<atc:run xmlns:atc="http://www.sap.com/adt/atc" xmlns:adtcore="http://www.sap.com/adt/core" maximumVerdicts="${maxResults}">` +
+    `<objectSets><objectSet kind="inclusive"><adtcore:objectReferences>${refs}</adtcore:objectReferences></objectSet></objectSets>` +
+    `</atc:run>`
+  );
+}
+
+// ATC over a whole package/transport can run well past the default 30s request
+// timeout (the run executes synchronously server-side). Give the run + result
+// fetch a generous ceiling.
+const ATC_RUN_TIMEOUT_MS = 120_000;
+
+// Full ATC flow: resolve variant → create worklist → run → fetch results.
+async function runAtcWorklist(client, sys, { uris, checkVariant, maxResults }) {
+  let variant = checkVariant;
+  if (!variant) {
+    variant = await fetchSystemCheckVariant(client);
+    if (!variant) {
+      return {
+        error: errorResult(
+          sys,
+          400,
+          "No checkVariant supplied and the system default check variant could not be read from /sap/bc/adt/atc/customizing. Pass checkVariant explicitly.",
+          "text/plain",
+          { stage: "variant" },
+        ),
+      };
+    }
+  }
+
+  // 1) Create worklist — response body is the worklist id (plain text).
+  const wlRes = await client.request({
+    method: "POST",
+    path: "/sap/bc/adt/atc/worklists",
+    query: { checkVariant: variant },
+    accept: "text/plain",
+  });
+  const wlText = await wlRes.text();
+  if (!wlRes.ok) {
+    return { error: errorResult(sys, wlRes.status, wlText, wlRes.headers.get("content-type"), { stage: "create-worklist", checkVariant: variant }) };
+  }
+  const worklistId = wlText.trim();
+
+  // 2) Run the checks for the object set.
+  const body = buildAtcObjectSet(uris, maxResults);
+  const runRes = await client.request({
+    method: "POST",
+    path: "/sap/bc/adt/atc/runs",
+    query: { worklistId },
+    headers: { "Content-Type": "application/xml" },
+    body,
+    timeoutMs: ATC_RUN_TIMEOUT_MS,
+  });
+  const runText = await runRes.text();
+  if (!runRes.ok) {
+    return { error: errorResult(sys, runRes.status, runText, runRes.headers.get("content-type"), { stage: "run", worklistId, checkVariant: variant }) };
+  }
+
+  // 3) Fetch the worklist results.
+  const resultRes = await client.request({
+    path: `/sap/bc/adt/atc/worklists/${encodeURIComponent(worklistId)}`,
+    query: { includeExemptedFindings: "false" },
+    accept: "application/atc.worklist.v1+xml",
+    timeoutMs: ATC_RUN_TIMEOUT_MS,
+  });
+  const resultText = await resultRes.text();
+  if (!resultRes.ok) {
+    return { error: errorResult(sys, resultRes.status, resultText, resultRes.headers.get("content-type"), { stage: "fetch-results", worklistId, checkVariant: variant }) };
+  }
+
+  const findings = parseAtcFindings(resultText);
+  return {
+    worklistId,
+    checkVariant: variant,
+    runResponse: runText,
+    findings,
+    resultXml: resultText,
+  };
+}
 
 export const tools = [
   {
@@ -70,6 +198,58 @@ export const tools = [
         },
       },
       required: ["objects"],
+    },
+  },
+  {
+    name: "adt_run_atc_package",
+    description:
+      "Run ABAP Test Cockpit (ATC) over an ENTIRE package via the full ADT worklist flow (create worklist → run → fetch results). Returns parsed findings (check, message, priority, location) plus a priority histogram and the worklist id. When checkVariant is omitted, the system default check variant from ATC customizing is used. This is the bulk counterpart to adt_run_atc (single object).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        system: { type: "string", description: SYSTEM_HINT },
+        package: { type: "string", description: "Package name to check, e.g. 'ZFLEET' or '/FGLR/CORE'." },
+        checkVariant: {
+          type: "string",
+          description: "ATC check variant. Omit to use the system default (from ATC customizing).",
+        },
+        maxResults: {
+          type: "integer",
+          description: "Maximum findings (maximumVerdicts) to request (default 100).",
+          minimum: 1,
+          maximum: 10000,
+        },
+      },
+      required: ["package"],
+    },
+  },
+  {
+    name: "adt_run_atc_transport",
+    description:
+      "Run ABAP Test Cockpit (ATC) over every object in a transport request via the full ADT worklist flow. Resolves the transport's object references, runs ATC against them, and returns parsed findings + priority histogram + worklist id. When checkVariant is omitted, the system default check variant is used.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        system: { type: "string", description: SYSTEM_HINT },
+        transport: { type: "string", description: "Transport request ID, e.g. 'E4DK900123'." },
+        checkVariant: {
+          type: "string",
+          description: "ATC check variant. Omit to use the system default.",
+        },
+        maxObjects: {
+          type: "integer",
+          description: "Maximum transport objects to include (default 200).",
+          minimum: 1,
+          maximum: 2000,
+        },
+        maxResults: {
+          type: "integer",
+          description: "Maximum findings (maximumVerdicts) to request (default 100).",
+          minimum: 1,
+          maximum: 10000,
+        },
+      },
+      required: ["transport"],
     },
   },
 ];
@@ -153,6 +333,74 @@ export function register({ getClient }) {
         checkVariant: variant,
         result: text,
         note: "ATC results are typically retrieved by following the worklist URL inside the response. Use adt_request to fetch the worklist if needed.",
+      });
+    },
+
+    adt_run_atc_package: async (args) => {
+      const { client, name: sys } = getClient(args.system);
+      const pkgUri = `/sap/bc/adt/packages/${encodeURIComponent(args.package.toLowerCase())}`;
+      const r = await runAtcWorklist(client, sys, {
+        uris: [pkgUri],
+        checkVariant: args.checkVariant,
+        maxResults: args.maxResults ?? 100,
+      });
+      if (r.error) return r.error;
+      return jsonResult({
+        system: sys,
+        scope: `package:${args.package.toUpperCase()}`,
+        checkVariant: r.checkVariant,
+        worklistId: r.worklistId,
+        findingCount: r.findings.length,
+        byPriority: summarizeFindings(r.findings),
+        findings: r.findings,
+        raw: r.findings.length === 0 ? r.resultXml.slice(0, 4000) : undefined,
+      });
+    },
+
+    adt_run_atc_transport: async (args) => {
+      const { client, name: sys } = getClient(args.system);
+      const trId = args.transport.toUpperCase();
+      const maxObjects = args.maxObjects ?? 200;
+
+      const trRes = await client.request({
+        path: `/sap/bc/adt/cts/transportrequests/${encodeURIComponent(trId)}`,
+      });
+      const trBody = await trRes.text();
+      if (!trRes.ok) {
+        return errorResult(sys, trRes.status, trBody, trRes.headers.get("content-type"), {
+          stage: "fetch-transport",
+        });
+      }
+      const refs = parseObjectReferences(trBody)
+        .filter((ref) => ref.uri)
+        .slice(0, maxObjects);
+      if (refs.length === 0) {
+        return jsonResult({
+          system: sys,
+          scope: `transport:${trId}`,
+          objectCount: 0,
+          note: "No object references found in the transport — nothing to check.",
+          raw: trBody.slice(0, 2000),
+        });
+      }
+      const uris = refs.map((ref) => ref.uri.split("?")[0]);
+      const r = await runAtcWorklist(client, sys, {
+        uris,
+        checkVariant: args.checkVariant,
+        maxResults: args.maxResults ?? 100,
+      });
+      if (r.error) return r.error;
+      return jsonResult({
+        system: sys,
+        scope: `transport:${trId}`,
+        objectCount: refs.length,
+        truncated: refs.length === maxObjects,
+        checkVariant: r.checkVariant,
+        worklistId: r.worklistId,
+        findingCount: r.findings.length,
+        byPriority: summarizeFindings(r.findings),
+        findings: r.findings,
+        raw: r.findings.length === 0 ? r.resultXml.slice(0, 4000) : undefined,
       });
     },
   };

@@ -25,6 +25,12 @@ import * as transportTools from "./tools/transports.js";
 import * as runtimeTools from "./tools/runtime.js";
 import * as dataTools from "./tools/data.js";
 import * as requestTools from "./tools/request.js";
+import * as versionTools from "./tools/versions.js";
+import * as noteTools from "./tools/notes.js";
+import * as cdsTools from "./tools/cds.js";
+import * as worklistTools from "./tools/worklist.js";
+import * as jobTools from "./tools/jobs.js";
+import * as rapTools from "./tools/rap.js";
 
 const PKG = JSON.parse(
   readFileSync(
@@ -87,6 +93,12 @@ const TOOL_MODULES = [
   runtimeTools,
   dataTools,
   requestTools,
+  versionTools,
+  noteTools,
+  cdsTools,
+  worklistTools,
+  jobTools,
+  rapTools,
 ];
 
 const tools = [];
