@@ -6,6 +6,18 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.7.0]
+
+### Changed
+
+- **Project renamed to `sap-adt-mcp`** (GitHub repo: `yzonur/sap-adt-mcp`,
+  previously `claude-for-abap`). The npm package is now published as
+  `sap-adt-mcp`; the old `claude-for-abap` package is deprecated but its
+  existing installs keep working. Both `sap-adt-mcp` and `claude-for-abap`
+  bin names are provided. The MCP server now identifies itself as
+  `sap-adt-mcp` in the initialize handshake. No tool, prompt, or config
+  changes — the config still lives at `~/.sap-adt-mcp/config.json`.
+
 ## [0.6.0]
 
 The high-priority tool backlog, in one pass — eighteen new tools across six new

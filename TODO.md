@@ -1,4 +1,4 @@
-# claude-for-abap — backlog
+# sap-adt-mcp — backlog
 
 Feature ideas surfaced during the v0.5 design discussion (2026-05-13). Sections
 follow priority. The SessionStart hook (`~/.claude/show-active-todos.ps1`)

@@ -1,4 +1,4 @@
-# claude-for-abap
+# sap-adt-mcp
 
 > **MCP server giving Claude (and any MCP-compatible client) live access to SAP systems via ADT.**
 >
@@ -7,10 +7,10 @@
 > from a chat window or an autonomous agent. No add-on installation on the SAP
 > stack required.
 
-[![npm version](https://img.shields.io/npm/v/claude-for-abap.svg)](https://www.npmjs.com/package/claude-for-abap)
-[![CI](https://github.com/yzonur/claude-for-abap/actions/workflows/ci.yml/badge.svg)](https://github.com/yzonur/claude-for-abap/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/sap-adt-mcp.svg)](https://www.npmjs.com/package/sap-adt-mcp)
+[![CI](https://github.com/yzonur/sap-adt-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/yzonur/sap-adt-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/node/v/claude-for-abap.svg)](https://nodejs.org)
+[![Node.js](https://img.shields.io/node/v/sap-adt-mcp.svg)](https://nodejs.org)
 
 ---
 
@@ -70,12 +70,15 @@ context window.
 
 ## Install
 
+> Previously published as `claude-for-abap` — that package still works but is
+> deprecated; new installs should use `sap-adt-mcp`.
+
 ```bash
 # global
-npm install -g claude-for-abap
+npm install -g sap-adt-mcp
 
 # or run without installing
-npx claude-for-abap
+npx sap-adt-mcp
 ```
 
 Requires Node.js **22.19+** (undici v8, used as the HTTP client, requires
@@ -161,7 +164,7 @@ disables TLS validation for that profile only. Don't set this on PRD.
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add sap-adt -- npx claude-for-abap
+claude mcp add sap-adt -- npx sap-adt-mcp
 ```
 
 Pass secrets through the registration:
@@ -170,7 +173,7 @@ Pass secrets through the registration:
 claude mcp add sap-adt \
   --env SAP_DEV_PASSWORD=... \
   --env SAP_PRD_PASSWORD=... \
-  -- npx claude-for-abap
+  -- npx sap-adt-mcp
 ```
 
 ### Claude Desktop
@@ -182,7 +185,7 @@ Edit `claude_desktop_config.json` (Settings → Developer → Edit Config):
   "mcpServers": {
     "sap-adt": {
       "command": "npx",
-      "args": ["-y", "claude-for-abap"],
+      "args": ["-y", "sap-adt-mcp"],
       "env": {
         "SAP_DEV_PASSWORD": "..."
       }
@@ -197,7 +200,7 @@ apply.
 ### Validate before connecting
 
 ```bash
-npx claude-for-abap --validate-config
+npx sap-adt-mcp --validate-config
 ```
 
 Loads the config and pings every system; exits non-zero if any are unreachable
@@ -337,7 +340,7 @@ exact commands are:
 The slash-command name structure is determined by the MCP client: the
 `mcp__<server-alias>__` prefix is added automatically based on the alias
 you used when registering the server. If you registered the server with
-a different alias (e.g. `claude mcp add cc -- npx claude-for-abap`), the
+a different alias (e.g. `claude mcp add cc -- npx sap-adt-mcp`), the
 prefix changes accordingly (`/mcp__cc__clean_core_grade`).
 
 In Claude Desktop, prompts appear in the slash-command picker — same
@@ -497,7 +500,7 @@ when present.
 
 ## Troubleshooting
 
-**"failed" in Claude Desktop's MCP server list.** Run `claude-for-abap
+**"failed" in Claude Desktop's MCP server list.** Run `sap-adt-mcp
 --validate-config` from a terminal. If that prints OK, the server is fine and
 the issue is in your `claude_desktop_config.json` (wrong path or env).
 

@@ -116,7 +116,7 @@ for (const mod of TOOL_MODULES) {
 
 // --- MCP wiring --------------------------------------------------------------
 const server = new Server(
-  { name: "claude-for-abap", version: PKG.version },
+  { name: "sap-adt-mcp", version: PKG.version },
   { capabilities: { tools: {}, prompts: {} } }
 );
 

@@ -1,4 +1,4 @@
-// MCP prompts exposed by claude-for-abap.
+// MCP prompts exposed by sap-adt-mcp.
 //
 // These surface in MCP-compatible clients (Claude Desktop, Claude Code, etc.)
 // as user-invokable slash commands. Each prompt encodes a slice of SAP's
@@ -9,7 +9,7 @@
 //
 // In Claude Code these appear as e.g. /mcp__sap-adt__clean_core_grade.
 // The "sap-adt" segment depends on the name the user gave the server when
-// registering it (`claude mcp add sap-adt -- npx claude-for-abap`).
+// registering it (`claude mcp add sap-adt -- npx sap-adt-mcp`).
 //
 // The skill at skills/abap-clean-core/ remains as the long-form reference
 // documentation. These prompts are the operational surface — they pull the

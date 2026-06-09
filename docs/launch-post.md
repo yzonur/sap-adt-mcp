@@ -26,7 +26,7 @@ Two versions, pick one. Both should be paired with either:
 > used, search, package walk, cross-system diff, transport diff, ATC, ABAP
 > Unit, activate). Plus a generic escape hatch for niche endpoints.
 >
-> MIT-licensed. Repo + install: github.com/yzonur/claude-for-abap
+> MIT-licensed. Repo + install: github.com/yzonur/sap-adt-mcp
 >
 > [video / screenshot here]
 >
@@ -51,7 +51,7 @@ Two versions, pick one. Both should be paired with either:
 > aktivasyon, paket tarama, transport diff, cross-system karşılaştırma.
 >
 > 14 tool, MIT lisans, npx ile çalıştırılabilir. Repo:
-> github.com/yzonur/claude-for-abap
+> github.com/yzonur/sap-adt-mcp
 >
 > [video]
 >

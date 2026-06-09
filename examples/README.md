@@ -1,6 +1,6 @@
 # Example agent workflows
 
-These are realistic prompts that exercise multiple `claude-for-abap` tools
+These are realistic prompts that exercise multiple `sap-adt-mcp` tools
 together. Use them as a starting point — the agent decides the exact tool
 sequence, you just describe the intent.
 
