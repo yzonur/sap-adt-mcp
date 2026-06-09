@@ -1,12 +1,12 @@
 {
-  "name": "claude-for-abap",
-  "version": "0.6.0",
+  "name": "sap-adt-mcp",
+  "version": "0.7.0",
   "description": "MCP server giving Claude live access to SAP systems via ADT (ABAP Development Tools) REST. Read source, search, run syntax checks, and edit ABAP objects from any MCP-compatible client.",
   "type": "module",
   "main": "src/server.js",
   "bin": {
-    "claude-for-abap": "src/server.js",
-    "sap-adt-mcp": "src/server.js"
+    "sap-adt-mcp": "src/server.js",
+    "claude-for-abap": "src/server.js"
   },
   "files": [
     "src",
@@ -35,12 +35,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yzonur/claude-for-abap.git"
+    "url": "git+https://github.com/yzonur/sap-adt-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/yzonur/claude-for-abap/issues"
+    "url": "https://github.com/yzonur/sap-adt-mcp/issues"
   },
-  "homepage": "https://github.com/yzonur/claude-for-abap#readme",
+  "homepage": "https://github.com/yzonur/sap-adt-mcp#readme",
   "author": "yzonur",
   "license": "MIT",
   "dependencies": {

@@ -18,7 +18,7 @@ labels: bug
 
 ## Environment
 
-- `claude-for-abap` version:
+- `sap-adt-mcp` version (or `claude-for-abap` if installed under the old name):
 - Node version: `node --version`
 - OS:
 - MCP client (Claude Desktop, Claude Code, custom): 

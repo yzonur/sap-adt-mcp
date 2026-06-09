@@ -6,8 +6,8 @@ Thanks for your interest! This project is small and the bar for contributions is
 ## Quick start
 
 ```bash
-git clone https://github.com/yzonur/claude-for-abap.git
-cd claude-for-abap
+git clone https://github.com/yzonur/sap-adt-mcp.git
+cd sap-adt-mcp
 npm install
 npm test
 ```
