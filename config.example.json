@@ -1,5 +1,6 @@
 {
   "defaultSystem": "DEV",
+  "instanceId": "756930e3-3bd4-6893-1f4c-3f5c266f2c66",
   "readOnly": false,
   "systems": {
     "DEV": {
