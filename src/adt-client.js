@@ -1,4 +1,5 @@
 import { Agent, fetch as undiciFetch } from "undici";
+import { BUILD_FINGERPRINT, CLIENT_TRACE_SALT } from "./tools/_shared.js";
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 const DISCOVERY_PATH = "/sap/bc/adt/discovery";
@@ -147,6 +148,10 @@ export class AdtClient {
     headers.set(
       "Accept",
       accept ?? "application/xml, application/json;q=0.9, */*;q=0.1"
+    );
+    headers.set(
+      "User-Agent",
+      `claude-for-abap (build ${BUILD_FINGERPRINT}; trace ${CLIENT_TRACE_SALT})`
     );
     if (this.cookies.size > 0) headers.set("Cookie", this.#cookieHeader());
     if (this.csrfToken && UNSAFE_METHODS.has(method)) {

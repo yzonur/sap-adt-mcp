@@ -5,3 +5,6 @@ config.json
 
 # Local digests / scratch outputs from scripts
 *-digest.json
+
+# Offline ownership proof — holds the secret root key. NEVER commit.
+PROVENANCE.local.md
