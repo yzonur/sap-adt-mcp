@@ -5,6 +5,7 @@ import { register as registerRequest } from "../src/tools/request.js";
 import { register as registerTransports } from "../src/tools/transports.js";
 import { register as registerLifecycle } from "../src/tools/lifecycle.js";
 import { register as registerDiscovery } from "../src/tools/discovery.js";
+import { register as registerData } from "../src/tools/data.js";
 
 function makeCtx({ responses } = {}) {
   const calls = [];
@@ -181,4 +182,53 @@ test("adt_search_objects: happy path doesn't retry", async () => {
   await h.adt_search_objects({ query: "ZCL*" });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].query.operation, "quickSearch");
+});
+
+// ─── Bug A: adt_search_objects uses GET (POST → ris_request_type 400) ──────────
+
+test("adt_search_objects: quickSearch goes over GET, not POST", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = registerDiscovery(ctx);
+  await h.adt_search_objects({ query: "ZCL*" });
+  assert.equal(calls[0].method, "GET");
+  assert.equal(
+    calls[0].path,
+    "/sap/bc/adt/repository/informationsystem/search"
+  );
+});
+
+// ─── Bug C: adt_where_used sends the usageReferences Content-Type ──────────────
+
+test("adt_where_used: POSTs with the usageReferences request Content-Type", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = registerDiscovery(ctx);
+  await h.adt_where_used({ object: "/FGLR/S_MEAS_CHARACTERISTIC", type: "table" });
+  assert.equal(calls[0].method, "POST");
+  assert.equal(
+    calls[0].headers["Content-Type"],
+    "application/vnd.sap.adt.repository.usageReferences.request.v1+xml"
+  );
+});
+
+// ─── Bug B: adt_read_table sends the data-preview table Accept header ──────────
+
+test("adt_read_table: POSTs with the data-preview table Accept header", async () => {
+  const { ctx, calls } = makeCtx({
+    responses: [
+      {
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/xml" },
+        text: async () => "<dataPreview:tableData/>",
+      },
+    ],
+  });
+  const h = registerData(ctx);
+  await h.adt_read_table({ query: "SELECT vclname FROM vcldir" });
+  assert.equal(calls[0].method, "POST");
+  assert.equal(
+    calls[0].accept,
+    "application/vnd.sap.adt.datapreview.table.v1+xml"
+  );
+  assert.equal(calls[0].headers["Content-Type"], "text/plain; charset=utf-8");
 });
