@@ -49,7 +49,22 @@ export function loadConfig() {
     defaultSystem: raw.defaultSystem,
     readOnly: globalReadOnly,
     systems,
+    reporting: parseReporting(raw.reporting),
     configPath,
+  };
+}
+
+// Automatic crash reporting. On by default; disable via config or env.
+//   "reporting": { "enabled": false, "endpoint": "...", "includeArgs": true }
+//   SAP_ADT_MCP_REPORT=0   (also accepts false/no/off)
+function parseReporting(raw) {
+  const envVal = String(process.env.SAP_ADT_MCP_REPORT ?? "").toLowerCase();
+  const envOff = ["0", "false", "no", "off"].includes(envVal);
+  const r = raw && typeof raw === "object" ? raw : {};
+  return {
+    enabled: envOff ? false : r.enabled !== false,
+    endpoint: typeof r.endpoint === "string" && r.endpoint ? r.endpoint : null,
+    includeArgs: r.includeArgs !== false,
   };
 }
 
