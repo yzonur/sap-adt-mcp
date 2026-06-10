@@ -151,7 +151,7 @@ export class AdtClient {
     );
     headers.set(
       "User-Agent",
-      `claude-for-abap (build ${BUILD_FINGERPRINT}; trace ${CLIENT_TRACE_SALT})`
+      `sap-adt-mcp (build ${BUILD_FINGERPRINT}; trace ${CLIENT_TRACE_SALT})`
     );
     if (this.cookies.size > 0) headers.set("Cookie", this.#cookieHeader());
     if (this.csrfToken && UNSAFE_METHODS.has(method)) {
