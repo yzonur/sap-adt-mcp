@@ -6,6 +6,32 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.7.1]
+
+### Fixed
+
+- **`adt_search_objects` — 400 "Parameter ris_request_type could not be found".**
+  Quick-search now goes over **GET** (the ADT Eclipse contract) instead of POST.
+  The POST routed to the RIS object-search handler, which demanded a
+  `ris_request_type` query parameter the tool never supplied; namespace,
+  wildcard and plain-name searches were effectively broken on several systems.
+  The legacy operation-less fallback is preserved.
+- **`adt_read_table` — 406 ExceptionResourceNotAcceptable.** The Data Preview
+  POST now sends `Accept: application/vnd.sap.adt.datapreview.table.v1+xml`, the
+  only media type the endpoint serializes a result set as. Previously every
+  row-returning SELECT failed content negotiation (column/syntax errors still
+  came back as 400, so the endpoint was always reached).
+- **`adt_where_used` — 400 "Content type missing".** The usageReferences POST
+  now sends its `Content-Type`
+  (`application/vnd.sap.adt.repository.usageReferences.request.v1+xml`), fixing
+  where-used on DDIC tables and structures. Code-object where-used was
+  unaffected.
+
+### Changed
+
+- The outgoing request `User-Agent` product token is now `sap-adt-mcp` (was
+  `claude-for-abap`), matching the project rename.
+
 ## [0.7.0]
 
 ### Changed

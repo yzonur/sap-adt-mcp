@@ -242,9 +242,14 @@ export function register({ getClient }) {
       };
       if (args.objectType) baseQuery.objectType = args.objectType;
 
+      // GET, not POST: POSTing to this path routes to the RIS object-search
+      // handler, which demands a `ris_request_type` query parameter we don't
+      // supply and rejects the call with 400 "Parameter ris_request_type could
+      // not be found". The quickSearch operation is a GET contract (the one ADT
+      // Eclipse uses) and needs no such parameter.
       const tryRequest = (extra) =>
         client.request({
-          method: "POST",
+          method: "GET",
           path: "/sap/bc/adt/repository/informationsystem/search",
           query: { ...baseQuery, ...extra },
         });
@@ -279,6 +284,14 @@ export function register({ getClient }) {
         method: "POST",
         path: "/sap/bc/adt/repository/informationsystem/usageReferences",
         query: { uri },
+        // Without this the server rejects the POST with 400 "Content type
+        // missing" — it hits DDIC objects (tables, structures) where the tool
+        // sent no request entity. The typed (empty) body is what ADT expects to
+        // mean "all usages of <uri>".
+        headers: {
+          "Content-Type":
+            "application/vnd.sap.adt.repository.usageReferences.request.v1+xml",
+        },
       });
       const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));

@@ -47,7 +47,12 @@ export function register({ getClient }) {
         query: { rowNumber: String(max) },
         headers: { "Content-Type": "text/plain; charset=utf-8" },
         body: args.query,
-        accept: "application/xml",
+        // The Data Preview endpoint content-negotiates strictly: a result set is
+        // only serialized for this exact media type. Sending "application/xml"
+        // (or anything else) makes the server 406 *after* it has accepted and
+        // validated the SELECT — column/syntax errors still come back as 400, so
+        // a 406 here means "query was fine, Accept was wrong".
+        accept: "application/vnd.sap.adt.datapreview.table.v1+xml",
       });
       const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
