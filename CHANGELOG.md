@@ -6,6 +6,20 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Automatic, privacy-preserving crash reporting.** When a tool call throws an
+  *unexpected* error, the server now sends a redacted, fingerprinted report to a
+  relay (a Cloudflare Worker the maintainer owns) which de-duplicates and files a
+  GitHub issue. The GitHub token lives only in the relay's secret store — nothing
+  secret ships in the package. Reports are scrubbed of hostnames, users,
+  passwords, tokens, IPs and emails; expected/user-side errors (read-only
+  violations, network/TLS failures, bad credentials, config mistakes) are never
+  sent; identical errors de-dup to one issue. On by default with a startup notice;
+  disable with `"reporting": { "enabled": false }` or `SAP_ADT_MCP_REPORT=0`. New
+  `src/reporter.js`, `worker/` relay, and `test/reporter.test.js`. See README →
+  *Automatic error reporting*.
+
 ## [0.7.1]
 
 ### Fixed
