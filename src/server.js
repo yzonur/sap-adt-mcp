@@ -15,6 +15,7 @@ import { AdtClient, ReadOnlyViolationError } from "./adt-client.js";
 import { listPrompts, getPrompt } from "./prompts.js";
 import { textResult } from "./result.js";
 import { createReporter } from "./reporter.js";
+import { createAuditLog, toolContext } from "./audit.js";
 
 import * as connectionTools from "./tools/connection.js";
 import * as sourceTools from "./tools/source.js";
@@ -62,6 +63,14 @@ process.stderr.write(
   `[${PKG.name}] v${PKG.version} — loaded ${Object.keys(config.systems).length} system(s) from ${config.configPath}; default=${config.defaultSystem ?? "none"}${config.readOnly ? " (global read-only)" : ""}\n`
 );
 
+const auditLog = createAuditLog(config);
+if (auditLog.enabled) {
+  process.stderr.write(
+    `[${PKG.name}] audit log: every write to SAP is recorded at ${auditLog.path} ` +
+      `(local only; disable with "audit": { "enabled": false } or SAP_ADT_MCP_AUDIT=0).\n`
+  );
+}
+
 const reporter = createReporter(config, PKG);
 if (reporter.enabled) {
   process.stderr.write(
@@ -88,7 +97,9 @@ function getClient(systemName) {
       `Unknown system '${name}'. Available: ${Object.keys(config.systems).join(", ")}`
     );
   }
-  if (!clientCache.has(name)) clientCache.set(name, new AdtClient(profile));
+  if (!clientCache.has(name)) {
+    clientCache.set(name, new AdtClient(profile, { audit: auditLog.record }));
+  }
   return { name, client: clientCache.get(name), profile };
 }
 
@@ -149,7 +160,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const handler = handlers[name];
   if (!handler) return textResult(`Unknown tool: ${name}`, true);
   try {
-    const out = await handler(args);
+    // toolContext lets the client-level audit log attribute each SAP write to
+    // the MCP tool that triggered it.
+    const out = await toolContext.run({ tool: name }, () => handler(args));
     // A handler that RETURNED a non-2xx ADT result (vs threw) carries structured
     // metadata on _adtError — let the reporter's classifier decide if it's a
     // likely tool defect worth auto-filing. Fire-and-forget; never throws.

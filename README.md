@@ -159,6 +159,29 @@ Recommended: set `readOnly: true` for QAS and PRD profiles. Keep DEV writable.
 Many internal SAP systems use self-signed certs. `"rejectUnauthorized": false`
 disables TLS validation for that profile only. Don't set this on PRD.
 
+### Audit log
+
+Every **write** the server performs against SAP (POST/PUT/DELETE/PATCH — locks,
+source updates, activations, transport operations) is appended to a local JSONL
+file, including which MCP tool triggered it and, for blocked attempts in
+read-only mode, the violation itself. Reads and read-only queries are not
+logged. Nothing leaves your machine — this is your local answer to "what exactly
+did the AI change?".
+
+Default location: `~/.sap-adt-mcp/audit.log`. One JSON object per line:
+
+```json
+{"ts":"2026-06-11T12:00:00.000Z","tool":"adt_set_source","host":"https://...","sapUser":"DEVELOPER","method":"PUT","path":"/sap/bc/adt/programs/programs/ztest/source/main","status":200,"ok":true,"transport":"E4DK900123"}
+```
+
+Configure or disable:
+
+```json
+{ "audit": { "enabled": false, "path": "/var/log/sap-adt-mcp/audit.log" } }
+```
+
+…or set `SAP_ADT_MCP_AUDIT=0` (also accepts `false`/`no`/`off`).
+
 ### Automatic error reporting
 
 The server sends small, **redacted** reports to the maintainer so defects get
@@ -330,6 +353,31 @@ Friendly aliases (any of either column work):
 | metadataext / ddlx | DDLX |
 | behaviordef / bdef | BDEF |
 | messageclass / msag | MSAG |
+
+## Skills (packaged workflows)
+
+The raw tools are building blocks; [`skills/`](skills/) ships ready-made
+workflows for Claude Code that orchestrate them. Each SKILL.md lists its own
+prerequisites (minimum NetWeaver release, required authorizations, read-only
+compatibility).
+
+| Skill | What it does | Read-only OK? | Min. system |
+| --- | --- | --- | --- |
+| [`transport-release-gate`](skills/transport-release-gate/SKILL.md) | Pre-release quality gate over a TR: inactive objects, locks, syntax, ATC, unit tests → go/no-go report. Release stays a human decision. | Mostly (unit tests + release need write) | NW 7.50+, ATC configured |
+| [`dump-triage`](skills/dump-triage/SKILL.md) | ST22 triage: group dumps into families, deep-read top offenders, root cause + fix per family. | Yes — safe on PRD | NW 7.50+ (dumps feed) |
+| [`legacy-code-doc`](skills/legacy-code-doc/SKILL.md) | Reverse-document legacy Z code: structure, DB touchpoints, callers, risks, S/4 migration notes. | Yes — safe on PRD | NW 7.4x+ (data samples 7.55+) |
+| [`abap-clean-core`](skills/abap-clean-core/SKILL.md) | SAP Clean Core framework knowledge: levels, decision framework, governance. | Yes (knowledge-only) | none |
+
+To use one, copy its folder into your project's `.claude/skills/` (or
+`~/.claude/skills/` for all projects):
+
+```bash
+cp -r node_modules/sap-adt-mcp/skills/dump-triage .claude/skills/
+# or from a clone: cp -r sap-adt-mcp/skills/dump-triage .claude/skills/
+```
+
+Claude Code picks them up automatically; they trigger when the conversation
+matches (e.g. "is E4DK900123 safe to release?" → transport-release-gate).
 
 ## Clean Core: prompts + reference
 

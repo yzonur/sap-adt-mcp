@@ -7,6 +7,16 @@ description: Apply SAP Clean Core extensibility principles whenever the user wri
 
 This skill encodes SAP's official Clean Core extensibility framework. Apply it when guiding the user through ABAP development, code review, refactoring, or architecture decisions for SAP S/4HANA.
 
+## Prerequisites
+
+None — this is a knowledge skill: it needs no SAP connection and works in any
+ABAP conversation. When sap-adt-mcp **is** connected it gets sharper:
+`adt_run_atc` / `adt_run_atc_package` verify findings against the system's real
+check variant, `adt_list_released_apis` confirms what is actually released on
+that release level, and `adt_where_used` measures the blast radius of a Level
+C/D dependency before recommending a replacement. Cloud-readiness ATC checks
+require an S/4HANA system (or a recent ATC content update on NW 7.5x).
+
 ## Why Clean Core matters
 
 Every extension that touches SAP-internal objects, modifies standard code, or relies on undocumented APIs becomes a maintenance liability. It blocks upgrades, breaks unpredictably, and accumulates as technical debt that compounds over years.

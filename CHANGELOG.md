@@ -6,6 +6,34 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.2]
+
+### Added
+
+- **Three packaged workflow skills** under `skills/` (now shipped in the npm
+  package alongside `abap-clean-core`), each documenting its own prerequisites
+  (minimum NetWeaver release, authorizations, read-only compatibility):
+  - **`transport-release-gate`** — pre-release quality gate over a transport:
+    inactive objects, foreign locks, syntax checks (with include contexts),
+    transport-wide ATC, unit tests → structured go/no-go report. Releasing
+    stays a human decision; the skill only calls `adt_release_transport` on an
+    explicit request.
+  - **`dump-triage`** — ST22 triage: list, group into dump families, deep-read
+    top offenders (chapters + live source at the termination point), root-cause
+    hypothesis and fix per family. Fully read-only.
+  - **`legacy-code-doc`** — reverse-documentation for legacy Z code: entry
+    points, DB touchpoints (writes first), callers/blast radius, risks, change
+    history, S/4 migration notes. Fully read-only.
+  `abap-clean-core` gained a Prerequisites section for consistency.
+- **Local write-audit log.** Every write the server performs against SAP
+  (POST/PUT/DELETE/PATCH, excluding whitelisted read-only queries) is appended
+  to a local JSONL file — `~/.sap-adt-mcp/audit.log` by default — with
+  timestamp, the MCP tool that triggered it, target host/user, method, path,
+  HTTP status, and transport (corrNr) when present. Blocked read-only
+  violations are logged too (`outcome: "blocked-read-only"`). Local only;
+  nothing is transmitted. Configure with `"audit": { "enabled", "path" }` or
+  disable via `SAP_ADT_MCP_AUDIT=0`. New `src/audit.js` + `test/audit.test.js`.
+
 ## [0.8.1]
 
 ### Fixed

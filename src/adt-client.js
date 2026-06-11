@@ -44,8 +44,11 @@ export class ReadOnlyViolationError extends Error {
 }
 
 export class AdtClient {
-  constructor(profile) {
+  constructor(profile, hooks = {}) {
     this.profile = profile;
+    // Optional write-audit callback: invoked with one entry per unsafe-method
+    // request (and per blocked read-only violation). See src/audit.js.
+    this.audit = typeof hooks.audit === "function" ? hooks.audit : null;
     this.cookies = new Map();
     this.csrfToken = null;
     this.timeoutMs = profile.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -70,8 +73,16 @@ export class AdtClient {
     // first, gate second.
     const resolvedPath = this.#resolvePath(path);
 
+    const isWrite =
+      UNSAFE_METHODS.has(upperMethod) && !isReadOnlyPostPath(resolvedPath);
+
     if (UNSAFE_METHODS.has(upperMethod) && this.profile.readOnly) {
       if (!isReadOnlyPostPath(resolvedPath)) {
+        this.#auditWrite({
+          method: upperMethod,
+          path: resolvedPath,
+          outcome: "blocked-read-only",
+        });
         throw new ReadOnlyViolationError(upperMethod, resolvedPath);
       }
     }
@@ -91,7 +102,30 @@ export class AdtClient {
       res = await this.#send(upperMethod, resolvedPath, query, body, headers, accept, undefined, timeoutMs);
     }
 
+    if (isWrite) {
+      this.#auditWrite({
+        method: upperMethod,
+        path: resolvedPath,
+        status: res.status,
+        ok: res.ok,
+        ...(query?.corrNr ? { transport: String(query.corrNr) } : {}),
+      });
+    }
+
     return res;
+  }
+
+  #auditWrite(entry) {
+    if (!this.audit) return;
+    try {
+      this.audit({
+        host: this.profile.host,
+        sapUser: this.profile.user,
+        ...entry,
+      });
+    } catch {
+      // Auditing must never break the request itself.
+    }
   }
 
   // Public wrapper so callers (e.g. the adt_request handler) can apply the
