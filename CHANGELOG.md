@@ -6,6 +6,45 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`adt_read_table` returned `rows: []` despite `totalRows > 0` (#2).** The
+  0.8.0 `Accept: …datapreview.table.v1+xml` fix made the endpoint answer 200, but
+  that media type serializes a **column-major** document (one `<columns>` block
+  per column, each with its own `<dataSet>`) the row parser didn't recognize.
+  `parseDataPreview` now transposes the column-major shape into rows (and handles
+  self-closing `<data/>` null cells).
+- **`adt_list_dumps` ignored the `user` filter (#3).** Several on-prem releases
+  ignore the feed's `user` query parameter and return every user's dumps. The
+  filter is now enforced client-side (case-insensitive), the same way
+  `maxResults` already is.
+- **`adt_get_source type=dataelement` always 406'd (#4).** Data elements (and
+  domains / message classes) have no plain-text source — they serve XML metadata
+  behind a dedicated media type, so the unconditional `Accept: text/plain` got
+  406 ExceptionResourceNotAcceptable. These types now request the right
+  `…dataelements/domains/messageclass.v2+xml` media type and return the metadata
+  as `format: "xml"`.
+
+### Added
+
+- **`adt_syntax_check` can now check includes (#5).** Includes only compile in
+  the context of a main program; the tool gained a `context` parameter (main
+  program / function group ADT URI or bare name) attached to the include's source
+  URI as `?context=`. When omitted it best-effort auto-resolves the include's
+  first main program via `…/mainprograms`; if still unresolved the response
+  carries a hint.
+- **Two more reporting channels (#6).** The crash reporter only saw thrown
+  errors — the rarest defect class. Added: (1) an **ADT-error channel** that
+  auto-reports the non-2xx results a classifier flags as tool bugs
+  (406/415/malformed/5xx; skips auth/404/locks/data-preview SQL), wired through
+  `errorResult` → the call-tool wrapper; and (2) an **`adt_report_issue` tool**
+  so the agent can file bugs/enhancements it detects in otherwise-successful
+  responses. Both reuse the existing redaction/fingerprint/relay pipeline; the
+  relay routes the three kinds (`crash` / `adt-error` / `manual`) to distinct
+  labels (`auto-reported` / `auto-adt-error` / `agent-reported`) with per-label
+  de-dup. New config: `reporting.adtErrors`, `reporting.allowManual` (both
+  default true).
+
 ## [0.8.0]
 
 ### Added

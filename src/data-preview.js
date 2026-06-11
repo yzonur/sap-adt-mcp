@@ -54,6 +54,13 @@ const ROW_RE = /<[a-zA-Z]+:row\b[^>]*>([\s\S]*?)<\/[a-zA-Z]+:row>/g;
 const VALUE_RE = /<[a-zA-Z]+:value\b[^>]*>([\s\S]*?)<\/[a-zA-Z]+:value>/g;
 const DATA_CELL_RE =
   /<[a-zA-Z]+:data\b[^>]*\b(?:dataPreview:)?columnName="([^"]+)"[^>]*>([\s\S]*?)<\/[a-zA-Z]+:data>/g;
+// Column-major table.v1+xml: one <columns> block per column, each carrying a
+// <metadata> (the column) and a <dataSet> of <data> cells, one per row.
+const COLUMN_BLOCK_RE =
+  /<[a-zA-Z]+:columns\b[^>]*>([\s\S]*?)<\/[a-zA-Z]+:columns>/g;
+// A <data> cell, matching both <data>val</data> and self-closing <data/> (null).
+const DATA_RE =
+  /<[a-zA-Z]+:data\b[^>]*?(?:\/>|>([\s\S]*?)<\/[a-zA-Z]+:data>)/g;
 const ATTR_RE = (attr) =>
   new RegExp(`\\b(?:[a-zA-Z]+:)?${attr}="([^"]*)"`, "i");
 
@@ -75,6 +82,35 @@ function pickTagText(xml, tag) {
   const re = new RegExp(`<[a-zA-Z]+:${tag}\\b[^>]*>([\\s\\S]*?)<\\/[a-zA-Z]+:${tag}>`, "i");
   const m = xml.match(re);
   return m ? decodeEntities(m[1].trim()) : undefined;
+}
+
+// Parse the column-major table.v1+xml shape into row objects. Each
+// <dataPreview:columns> block holds one <metadata> (the column) and a
+// <dataSet> whose <data> children are that column's values across all rows.
+// Returns [] when the document isn't column-major (no per-column data cells).
+function parseColumnMajor(xml) {
+  const cols = [];
+  let nrows = 0;
+  for (const block of xml.matchAll(COLUMN_BLOCK_RE)) {
+    const inner = block[1];
+    const metaMatch = inner.match(/<[a-zA-Z]+:metadata\b([^>]*)>/);
+    const name = metaMatch ? pickAttr(metaMatch[1], "name") : undefined;
+    const values = [...inner.matchAll(DATA_RE)].map((d) =>
+      decodeEntities((d[1] ?? "").trim())
+    );
+    // A metadata-only <columns> wrapper (Shape A) carries no data cells — skip.
+    if (!name || values.length === 0) continue;
+    cols.push({ name, values });
+    if (values.length > nrows) nrows = values.length;
+  }
+  if (cols.length === 0) return [];
+  const rows = [];
+  for (let i = 0; i < nrows; i++) {
+    const row = {};
+    for (const c of cols) row[c.name] = c.values[i] ?? null;
+    rows.push(row);
+  }
+  return rows;
 }
 
 export function parseDataPreview(xml) {
@@ -114,21 +150,28 @@ export function parseDataPreview(xml) {
       }
     }
   } else {
-    // Shape B: flat <data columnName="X">val</data> blocks. We group every N
-    // cells into a row where N = column count.
-    const cells = [...xml.matchAll(DATA_CELL_RE)].map((m) => ({
-      column: m[1],
-      value: decodeEntities(m[2].trim()),
-    }));
-    if (columns.length > 0 && cells.length > 0) {
-      const stride = columns.length;
-      for (let i = 0; i < cells.length; i += stride) {
-        const row = {};
-        for (let j = 0; j < stride && i + j < cells.length; j++) {
-          const cell = cells[i + j];
-          row[cell.column] = cell.value;
+    // Shape C: column-major table.v1+xml — each <columns> block carries the
+    // column metadata plus its own <dataSet> of cells. Transpose to rows.
+    const colMajor = parseColumnMajor(xml);
+    if (colMajor.length > 0) {
+      rows.push(...colMajor);
+    } else {
+      // Shape B: flat <data columnName="X">val</data> blocks. We group every N
+      // cells into a row where N = column count.
+      const cells = [...xml.matchAll(DATA_CELL_RE)].map((m) => ({
+        column: m[1],
+        value: decodeEntities(m[2].trim()),
+      }));
+      if (columns.length > 0 && cells.length > 0) {
+        const stride = columns.length;
+        for (let i = 0; i < cells.length; i += stride) {
+          const row = {};
+          for (let j = 0; j < stride && i + j < cells.length; j++) {
+            const cell = cells[i + j];
+            row[cell.column] = cell.value;
+          }
+          rows.push(row);
         }
-        rows.push(row);
       }
     }
   }

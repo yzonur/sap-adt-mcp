@@ -1,81 +1,64 @@
-# Crash-report relay (Cloudflare Worker)
+# Crash/issue-report relay (Cloudflare Worker)
 
-`reporter.worker.js` receives redacted crash reports from `sap-adt-mcp` installs
-and files / de-duplicates GitHub issues on `yzonur/sap-adt-mcp`.
+`reporter.worker.js` receives redacted reports from `sap-adt-mcp` installs and
+files / de-duplicates GitHub issues on `yzonur/sap-adt-mcp`.
 
 Why a relay: filing an issue needs a GitHub token. Shipping a token inside the
 distributed npm package would expose it to everyone who clones the repo. The
 token instead lives **only here**, as a Worker secret (`GITHUB_TOKEN`). The
 client knows the relay's public URL — nothing more.
 
-## What it does
+Deployed URL: `https://sap-adt-mcp-reporter.onuryz-itu.workers.dev`
+(matches `DEFAULT_ENDPOINT` in `src/reporter.js`).
 
-- `GET /` → health check (`sap-adt-mcp reporter: ok`).
-- `POST /` with header `x-report-source: sap-adt-mcp` and a JSON report:
-  - searches open issues labelled `auto-reported` for the report's
-    `fingerprint:<hash>` marker;
-  - **found** → adds a "Seen again" comment to that issue;
-  - **not found** → opens a new issue titled `[auto] <Error>: <message>`, labelled
-    `auto-reported` + `bug` (labels are created automatically on first use).
-- Anything without the source header → `403`. Missing token → `503`.
+## Report kinds
 
-The deployed URL is:
+| `kind` | source header | trigger | label |
+| --- | --- | --- | --- |
+| `crash` | `sap-adt-mcp` | a tool handler threw | `auto-reported` |
+| `adt-error` | `sap-adt-mcp` | a tool returned a non-2xx ADT result the classifier flags | `auto-adt-error` |
+| `manual` | `sap-adt-mcp-manual` | the agent filed it via `adt_report_issue` | `agent-reported` (+ `bug`/`enhancement`) |
 
-```
-https://sap-adt-mcp-reporter.onuryz-itu.workers.dev
-```
-
-which matches `DEFAULT_ENDPOINT` in `src/reporter.js`.
+Each kind de-dups within its own label namespace: the relay searches open issues
+with that label for the report's `fingerprint:<hash>` marker; found → adds a
+"Seen again" comment, else → opens a new issue. Requests without an allowed
+`x-report-source` → 403; missing token → 503. Labels are created automatically
+on first use.
 
 ## Set the GitHub token (required before it can file issues)
 
-Create a **fine-grained** personal access token scoped to **only** the
-`yzonur/sap-adt-mcp` repository with **Issues: Read and write** (nothing else),
-then store it as the Worker secret. Easiest options:
+Create a **fine-grained** PAT scoped to **only** `yzonur/sap-adt-mcp` with
+**Issues: Read and write** (nothing else), then store it as the Worker secret:
 
-**Cloudflare dashboard:** Workers & Pages → `sap-adt-mcp-reporter` → Settings →
-Variables and Secrets → add secret `GITHUB_TOKEN` → paste token → deploy.
+**Dashboard:** Workers & Pages → `sap-adt-mcp-reporter` → Settings → Variables
+and Secrets → add secret `GITHUB_TOKEN` → paste → deploy.
 
-**wrangler CLI:**
+**wrangler:** `npx wrangler secret put GITHUB_TOKEN --name sap-adt-mcp-reporter`
 
-```bash
-npx wrangler secret put GITHUB_TOKEN --name sap-adt-mcp-reporter
-# paste the token when prompted
-```
+Verify: `curl https://sap-adt-mcp-reporter.onuryz-itu.workers.dev` → `ok`.
 
-Verify:
+## ⚠️ Redeploying without wiping the secret
 
-```bash
-curl https://sap-adt-mcp-reporter.onuryz-itu.workers.dev            # -> ok
-curl -X POST https://sap-adt-mcp-reporter.onuryz-itu.workers.dev \
-  -H 'content-type: application/json' -H 'x-report-source: sap-adt-mcp' \
-  -d '{"fingerprint":"smoketest0000","errorName":"Error","message":"relay smoke test"}'
-# before the token is set -> 503 "relay not configured"
-# after  the token is set -> {"status":"created","issue":N}  (delete that test issue)
-```
+Uploading a new script version **replaces all bindings**, which **deletes the
+`GITHUB_TOKEN` secret** unless you tell the upload to keep it. Always include
+`keep_bindings` in the upload metadata:
 
-## Redeploy after editing the worker
+- **Cloudflare API (module upload):** add `"keep_bindings": ["secret_text"]` to
+  the `metadata` part.
+- **wrangler:** `wrangler deploy` preserves secrets by default (with a
+  `wrangler.toml` of `name`, `main = "reporter.worker.js"`,
+  `compatibility_date = "2024-11-06"`).
 
-This Worker was deployed via the Cloudflare API (ES-module upload). To redeploy
-with wrangler instead, a minimal `wrangler.toml` is:
-
-```toml
-name = "sap-adt-mcp-reporter"
-main = "reporter.worker.js"
-compatibility_date = "2024-11-06"
-```
-
-```bash
-npx wrangler deploy
-```
+If the secret does get wiped, just re-add `GITHUB_TOKEN` (steps above) — the
+token value can't be read back, so it must be re-entered, not recovered.
 
 ## Notes / limits
 
 - De-dup relies on GitHub search, whose indexing can lag a few seconds; a burst
-  of the same brand-new crash may create a couple of duplicates. The client
-  de-dups per process, keeping this rare. For stricter dedup, back the Worker
-  with a KV namespace keyed by fingerprint.
-- There is no auth beyond the `x-report-source` header (the client is public, so
-  any shared key would be too). The token is never at risk — worst case is junk
-  issues, which the source-header check and content validation already filter.
-  Add Cloudflare rate-limiting / WAF rules if abuse appears.
+  of the same brand-new report may create a couple of duplicates. The client
+  de-dups crash/adt-error per process, keeping this rare. For stricter dedup,
+  back the Worker with a KV namespace keyed by `kind:fingerprint`.
+- The only gate is the `x-report-source` header (the client is public, so any
+  shared key would be too). The token is never at risk — worst case is junk
+  issues, which the header check + content validation already filter. Add
+  Cloudflare rate-limiting / WAF rules if abuse appears.

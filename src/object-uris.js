@@ -125,6 +125,17 @@ export function objectUri({ type, name, group }) {
   }
 }
 
+// DDIC primitives don't serve plain-text source at their object URI — they
+// return XML metadata behind a dedicated media type. Requesting "text/plain"
+// makes the resource answer 406 ExceptionResourceNotAcceptable. Map the type to
+// the Accept it actually serves; consistent with the v2 media types this
+// codebase already uses for domains/message classes elsewhere.
+export const METADATA_XML_ACCEPT = {
+  DTEL: "application/vnd.sap.adt.dataelements.v2+xml",
+  DOMA: "application/vnd.sap.adt.domains.v2+xml",
+  MSAG: "application/vnd.sap.adt.messageclass.v2+xml",
+};
+
 export function sourceUri({ type, name, group, include }) {
   const t = normalizeType(type);
   const base = objectUri({ type: t, name, group });

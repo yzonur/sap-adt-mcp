@@ -1,4 +1,4 @@
-import { objectUri } from "../object-uris.js";
+import { objectUri, sourceUri, normalizeType } from "../object-uris.js";
 import { escapeXml } from "../xml.js";
 import { parseObjectReferences } from "../object-references.js";
 import { errorResult, jsonResult } from "../result.js";
@@ -131,10 +131,34 @@ async function runAtcWorklist(client, sys, { uris, checkVariant, maxResults }) {
   };
 }
 
+// Normalize a caller-supplied include context into an ADT object URI. Accepts a
+// full ADT path as-is; treats a bare token as a program name.
+export function toContextUri(input) {
+  const s = String(input).trim();
+  if (s.startsWith("/")) return s;
+  return `/sap/bc/adt/programs/programs/${encodeURIComponent(s.toLowerCase())}`;
+}
+
+// Best-effort: resolve an include's first main program via its /mainprograms
+// sub-resource. Any failure (older release, no main program, 4xx) returns
+// undefined so the check still runs (and the response carries a hint).
+async function deriveMainProgram(client, includeObjUri) {
+  try {
+    const res = await client.request({ path: `${includeObjUri}/mainprograms` });
+    if (!res.ok) return undefined;
+    const text = await res.text();
+    const m = text.match(/adtcore:uri="([^"]+)"/i);
+    return m ? m[1].replace(/&amp;/g, "&") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const tools = [
   {
     name: "adt_syntax_check",
-    description: "Run an ADT syntax check on an object. Returns the raw <chkrun:reports> XML.",
+    description:
+      "Run an ADT syntax check on an object. Returns the raw <chkrun:reports> XML. Includes only compile in the context of a main program: for type=include, pass `context` (the main program / function group), otherwise the check returns status='notProcessed'. When omitted for an include, the tool tries to auto-resolve the include's first main program.",
     inputSchema: {
       type: "object",
       properties: {
@@ -142,6 +166,11 @@ export const tools = [
         object: { type: "string", description: "Object name." },
         type: { type: "string", description: OBJECT_TYPE_HINT },
         group: { type: "string", description: "Function group (for FUGR/FF or FUGR/I)." },
+        context: {
+          type: "string",
+          description:
+            "Main-program context for checking an include. Either a full ADT object URI (e.g. '/sap/bc/adt/functions/groups/v61a' or '/sap/bc/adt/programs/programs/zmain') or a bare program name. Only used for includes; auto-resolved from the include's main programs when omitted.",
+        },
       },
       required: ["object", "type"],
     },
@@ -258,15 +287,35 @@ export function register({ getClient }) {
   return {
     adt_syntax_check: async (args) => {
       const { client, name: sys } = getClient(args.system);
-      const objUri = objectUri({
+      const t = normalizeType(args.type);
+      const isInclude = t === "INCL" || t === "FUGR/I";
+
+      let checkUri = objectUri({
         type: args.type,
         name: args.object,
         group: args.group,
       });
+      let contextUri;
+      if (isInclude) {
+        contextUri = args.context
+          ? toContextUri(args.context)
+          : await deriveMainProgram(client, checkUri);
+        // Includes are checked through their source URI with the main program
+        // attached as ?context= (the form ADT itself uses in include links).
+        const incSource = sourceUri({
+          type: args.type,
+          name: args.object,
+          group: args.group,
+        });
+        checkUri = contextUri
+          ? `${incSource}?context=${encodeURIComponent(contextUri)}`
+          : incSource;
+      }
+
       const body =
         `<?xml version="1.0" encoding="UTF-8"?>` +
         `<chkrun:checkObjectList xmlns:chkrun="http://www.sap.com/adt/checkrun" xmlns:adtcore="http://www.sap.com/adt/core">` +
-        `<chkrun:checkObject adtcore:uri="${escapeXml(objUri)}"/>` +
+        `<chkrun:checkObject adtcore:uri="${escapeXml(checkUri)}"/>` +
         `</chkrun:checkObjectList>`;
       const res = await client.request({
         method: "POST",
@@ -277,7 +326,20 @@ export function register({ getClient }) {
       });
       const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
-      return jsonResult({ system: sys, object: args.object, result: text });
+      const notProcessed = /chkrun:status="notProcessed"/i.test(text);
+      return jsonResult({
+        system: sys,
+        object: args.object,
+        context: contextUri,
+        result: text,
+        ...(isInclude && notProcessed
+          ? {
+              hint:
+                "Include not processed — no main-program context resolved. Pass `context` " +
+                "(the main program / function group ADT URI, e.g. '/sap/bc/adt/programs/programs/zmain').",
+            }
+          : {}),
+      });
     },
 
     adt_run_unit_tests: async (args) => {

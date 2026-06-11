@@ -92,6 +92,16 @@ export function parseDumpFeed(xml) {
   return entries;
 }
 
+// Client-side user filter. Several on-prem releases ignore the feed's `user`
+// query parameter and return every user's dumps, so we enforce the filter here
+// the same way adt_list_dumps already trims maxResults client-side. Match is
+// case-insensitive on the author/user the feed parser surfaced per entry.
+export function filterDumpsByUser(entries, user) {
+  if (!user) return entries;
+  const want = String(user).trim().toUpperCase();
+  return entries.filter((e) => (e.user ?? "").trim().toUpperCase() === want);
+}
+
 export function parseDumpDetail(xml) {
   // The detail response can be either an Atom entry or a richer rba-namespaced
   // document; surface what we can extract plus the raw body.

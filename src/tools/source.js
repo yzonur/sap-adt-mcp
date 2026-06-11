@@ -1,4 +1,4 @@
-import { sourceUri, objectUri, normalizeType } from "../object-uris.js";
+import { sourceUri, objectUri, normalizeType, METADATA_XML_ACCEPT } from "../object-uris.js";
 import { acquireLock, releaseLock } from "../lock.js";
 import { errorResult, jsonResult } from "../result.js";
 import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
@@ -120,7 +120,7 @@ export const tools = [
   {
     name: "adt_get_source",
     description:
-      "Fetch the ABAP source of an object (program, class, interface, function module, include, CDS, table). Returns plain text. For sources larger than the MCP per-call output cap (~64 KB), use firstLine/lastLine to paginate or onlyMethod to slice a single method body.",
+      "Fetch the ABAP source of an object (program, class, interface, function module, include, CDS, table). Returns plain text. DDIC primitives without plain-text source (data element, domain, message class) return their ADT XML metadata instead (format: 'xml'). For sources larger than the MCP per-call output cap (~64 KB), use firstLine/lastLine to paginate or onlyMethod to slice a single method body.",
     inputSchema: {
       type: "object",
       properties: {
@@ -273,12 +273,35 @@ export function register({ getClient }) {
   return {
     adt_get_source: async (args) => {
       const { client, name: sys } = getClient(args.system);
+      const t = normalizeType(args.type);
       const path = sourceUri({
         type: args.type,
         name: args.object,
         group: args.group,
         include: args.include,
       });
+
+      // DDIC primitives (data element / domain / message class) have no
+      // plain-text source — fetch their XML metadata with the right media type
+      // (text/plain would 406) and return it as-is.
+      const metaAccept = METADATA_XML_ACCEPT[t];
+      if (metaAccept) {
+        const res = await client.request({ path, accept: metaAccept });
+        const text = await res.text();
+        if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
+        return jsonResult({
+          system: sys,
+          object: args.object,
+          type: t,
+          path,
+          format: "xml",
+          source: text,
+          bytes: text.length,
+          totalLines: text.split(/\r?\n/).length,
+          note: `${t} has no plain-text source; returning ADT XML metadata (${metaAccept.split("+")[0]}+xml).`,
+        });
+      }
+
       const res = await client.request({ path, accept: "text/plain" });
       const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));

@@ -17,6 +17,7 @@ import * as cds from "../src/tools/cds.js";
 import * as worklist from "../src/tools/worklist.js";
 import * as jobs from "../src/tools/jobs.js";
 import * as rap from "../src/tools/rap.js";
+import * as report from "../src/tools/report.js";
 
 const MODULES = {
   connection,
@@ -35,6 +36,7 @@ const MODULES = {
   worklist,
   jobs,
   rap,
+  report,
 };
 
 const fakeCtx = {
