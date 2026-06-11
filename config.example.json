@@ -8,6 +8,9 @@
     "adtErrors": true,
     "allowManual": true
   },
+  "audit": {
+    "enabled": true
+  },
   "systems": {
     "DEV": {
       "host": "https://sap-dev.example.com:44300",

@@ -50,7 +50,24 @@ export function loadConfig() {
     readOnly: globalReadOnly,
     systems,
     reporting: parseReporting(raw.reporting),
+    audit: parseAudit(raw.audit),
     configPath,
+  };
+}
+
+// Local write-audit trail (JSONL). On by default; disable via config or env.
+//   "audit": { "enabled": false, "path": "/custom/audit.log" }
+//   SAP_ADT_MCP_AUDIT=0   (also accepts false/no/off)
+function parseAudit(raw) {
+  const envVal = String(process.env.SAP_ADT_MCP_AUDIT ?? "").toLowerCase();
+  const envOff = ["0", "false", "no", "off"].includes(envVal);
+  const r = raw && typeof raw === "object" ? raw : {};
+  return {
+    enabled: envOff ? false : r.enabled !== false,
+    path:
+      typeof r.path === "string" && r.path
+        ? r.path
+        : path.join(os.homedir(), ".sap-adt-mcp", "audit.log"),
   };
 }
 
