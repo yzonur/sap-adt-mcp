@@ -115,3 +115,12 @@ test("unsupported type throws", () => {
     /Unsupported/
   );
 });
+
+test("METADATA_XML_ACCEPT covers the DDIC primitives that 406 on text/plain", async () => {
+  const { METADATA_XML_ACCEPT } = await import("../src/object-uris.js");
+  assert.equal(METADATA_XML_ACCEPT.DTEL, "application/vnd.sap.adt.dataelements.v2+xml");
+  assert.equal(METADATA_XML_ACCEPT.DOMA, "application/vnd.sap.adt.domains.v2+xml");
+  assert.equal(METADATA_XML_ACCEPT.MSAG, "application/vnd.sap.adt.messageclass.v2+xml");
+  // The object URI for a data element is where the XML metadata is served.
+  assert.equal(objectUri({ type: "dataelement", name: "KDIFF" }), "/sap/bc/adt/ddic/dataelements/kdiff");
+});

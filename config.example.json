@@ -4,7 +4,9 @@
   "readOnly": false,
   "reporting": {
     "enabled": true,
-    "includeArgs": true
+    "includeArgs": true,
+    "adtErrors": true,
+    "allowManual": true
   },
   "systems": {
     "DEV": {

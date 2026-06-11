@@ -262,3 +262,18 @@ test("CRITICAL_CHAPTER_KEYS is the documented six-chapter set", () => {
     "sourceCodeExtract",
   ]);
 });
+
+test("filterDumpsByUser enforces the user filter client-side (case-insensitive)", async () => {
+  const { filterDumpsByUser } = await import("../src/dump-feed.js");
+  const entries = [
+    { id: "1", user: "BATCH" },
+    { id: "2", user: "SOMEUSER" },
+    { id: "3", user: "someuser" },
+    { id: "4", user: undefined },
+  ];
+  assert.equal(filterDumpsByUser(entries, "SOMEUSER").length, 2);
+  assert.equal(filterDumpsByUser(entries, "someuser").length, 2);
+  assert.equal(filterDumpsByUser(entries, "BATCH").length, 1);
+  assert.equal(filterDumpsByUser(entries, "NOBODY").length, 0);
+  assert.equal(filterDumpsByUser(entries, undefined).length, 4); // no filter
+});

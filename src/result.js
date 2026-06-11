@@ -10,7 +10,7 @@ export function jsonResult(value, isError = false) {
 
 export function errorResult(system, status, body, contentType, extra = {}) {
   const parsed = parseAdtError(body, contentType);
-  return jsonResult(
+  const result = jsonResult(
     {
       system,
       status,
@@ -20,4 +20,20 @@ export function errorResult(system, status, body, contentType, extra = {}) {
     },
     true
   );
+  // Attach structured metadata for the crash-report wrapper to classify against,
+  // without changing the content the client sees. Non-enumerable so it never
+  // serializes into the MCP result.
+  Object.defineProperty(result, "_adtError", {
+    value: {
+      system,
+      status,
+      type: parsed?.type,
+      namespace: parsed?.namespace,
+      t100: parsed?.properties?.t100,
+      message: parsed?.message ?? parsed?.localizedMessage,
+      stage: extra.stage,
+    },
+    enumerable: false,
+  });
+  return result;
 }

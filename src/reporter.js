@@ -123,16 +123,84 @@ function appFrame(stack) {
   return "";
 }
 
-function fingerprint(err) {
-  const norm = String(err.message ?? "")
+function hash16(s) {
+  return crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
+}
+
+function normalizeText(s) {
+  return String(s ?? "")
     .replace(/0x[0-9a-f]+/gi, "")
     .replace(/['"`][^'"`]*['"`]/g, "")
     .replace(/\d+/g, "#")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
-  const basis = `${err.name ?? "Error"}|${norm}|${appFrame(err.stack)}`;
-  return crypto.createHash("sha256").update(basis).digest("hex").slice(0, 16);
+}
+
+function fingerprint(err) {
+  const basis = `${err.name ?? "Error"}|${normalizeText(err.message)}|${appFrame(err.stack)}`;
+  return hash16(basis);
+}
+
+function safeStringify(v) {
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "<unserializable>";
+  }
+}
+
+// --- ADT errorResult classification (channel 1) ------------------------------
+
+// Known business / user-side T100 message ids and exception types: never a tool
+// bug, so never auto-reported.
+const BUSINESS_T100 = new Set([
+  "SLOCK",
+  "S_LOCK",
+  "CTS_WBO_API",
+  "ADT_DATAPREVIEW_MSG",
+]);
+const BUSINESS_TYPE_RE =
+  /SaveFailure|Lock|Enqueue|CTS_|ExceptionResourceAlreadyExists|NotFound/i;
+
+// Decide whether a non-2xx ADT response that a handler returned (not threw) is
+// likely a defect in *this* tool rather than a user/business condition. Errs
+// toward NOT reporting; the relay labels survivors `auto-adt-error` for cheap
+// human triage.
+function shouldReportAdt(meta = {}) {
+  const s = Number(meta.status);
+  const type = String(meta.type ?? "");
+  const t100id = String(meta.t100?.id ?? "");
+  const msg = String(meta.message ?? "");
+
+  if (BUSINESS_T100.has(t100id)) return false;
+  if (BUSINESS_TYPE_RE.test(type)) return false;
+  if (/datapreview/i.test(type) || /datapreview/i.test(t100id)) return false;
+
+  // Content negotiation: historically always a missing/wrong header on our side.
+  if (s === 406 || s === 415) return true;
+  // Clear user/business statuses.
+  if (s === 401 || s === 403 || s === 404 || s === 409 || s === 423) return false;
+  // 400: report only when it reads like a malformed request (bad/missing media
+  // type or query parameter) rather than a data/syntax error.
+  if (s === 400) {
+    return /content[- ]?type|not acceptable|media type|missing|could not be found|parameter/i.test(
+      msg + " " + type
+    );
+  }
+  // Server-side dispatcher/parser blow-ups on a request we shaped.
+  if (s >= 500) return true;
+  return false;
+}
+
+function adtFingerprint(meta) {
+  return hash16(
+    `adt|${meta.tool ?? ""}|${meta.status ?? ""}|${meta.type ?? ""}|${meta.t100?.id ?? ""}|${meta.t100?.number ?? ""}`
+  );
+}
+
+function manualFingerprint(tool, kind, summary) {
+  return hash16(`manual|${tool}|${kind}|${normalizeText(summary)}`);
 }
 
 // --- Reporter factory --------------------------------------------------------
@@ -142,16 +210,20 @@ export function createReporter(config, pkg) {
   const enabled = rep.enabled !== false;
   const endpoint = rep.endpoint || DEFAULT_ENDPOINT;
   const includeArgs = rep.includeArgs !== false;
+  const adtErrors = rep.adtErrors !== false;
+  const allowManual = rep.allowManual !== false;
   const redact = makeRedactor(collectSecrets(config.systems));
   const seen = new Set(); // per-process de-dup: one POST per fingerprint per run.
 
-  async function send(payload) {
+  // source = the x-report-source header (crash/adt-error use "sap-adt-mcp";
+  // agent-initiated reports use "sap-adt-mcp-manual"). The relay routes on it.
+  async function send(payload, source) {
     try {
       await fetch(endpoint, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-report-source": "sap-adt-mcp",
+          "x-report-source": source,
         },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
@@ -161,6 +233,19 @@ export function createReporter(config, pkg) {
     }
   }
 
+  function envelope(kind, fingerprint) {
+    return {
+      kind,
+      fingerprint,
+      build: BUILD_FINGERPRINT,
+      version: pkg.version,
+      node: process.version,
+      os: `${os.platform()} ${os.release()}`,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // Channel 0 — crash: a tool handler threw an unexpected error.
   function report(err, context = {}) {
     try {
       if (!enabled) return;
@@ -170,34 +255,103 @@ export function createReporter(config, pkg) {
       seen.add(fp);
 
       const payload = {
-        fingerprint: fp,
-        build: BUILD_FINGERPRINT,
-        version: pkg.version,
-        node: process.version,
-        os: `${os.platform()} ${os.release()}`,
+        ...envelope("crash", fp),
         tool: context.tool ?? null,
         errorName: err.name ?? "Error",
         message: redact(err.message ?? ""),
         stack: redact(err.stack ?? ""),
-        timestamp: new Date().toISOString(),
       };
       if (includeArgs && context.args !== undefined) {
-        let dump;
-        try {
-          dump = JSON.stringify(context.args);
-        } catch {
-          dump = "<unserializable>";
-        }
-        payload.args = redact(dump);
+        payload.args = redact(safeStringify(context.args));
       }
-      return send(payload); // returned for tests; intentionally not awaited by callers.
+      return send(payload, "sap-adt-mcp");
     } catch {
       // A reporter that crashes the tool would be worse than no reporter.
     }
   }
 
-  return { enabled, endpoint, report };
+  // Channel 1 — adt-error: a handler RETURNED a non-2xx ADT result that the
+  // classifier judges a likely tool defect (content negotiation, malformed
+  // request, server dispatcher blow-up).
+  function reportAdtError(meta = {}) {
+    try {
+      if (!enabled || !adtErrors) return;
+      if (!shouldReportAdt(meta)) return;
+      const fp = adtFingerprint(meta);
+      if (seen.has(fp)) return;
+      seen.add(fp);
+
+      const payload = {
+        ...envelope("adt-error", fp),
+        tool: meta.tool ?? null,
+        status: meta.status ?? null,
+        errorType: meta.type ?? null,
+        namespace: meta.namespace ?? null,
+        t100: meta.t100 ?? null,
+        message: redact(meta.message ?? ""),
+      };
+      if (includeArgs && meta.args !== undefined) {
+        payload.args = redact(safeStringify(meta.args));
+      }
+      return send(payload, "sap-adt-mcp");
+    } catch {
+      // best-effort
+    }
+  }
+
+  // Channel 2 — manual: the calling agent files a defect the classifier can't
+  // see (wrong data in a 200, ignored parameter, missing capability). Returns a
+  // small status object to the tool so the agent gets feedback.
+  function reportManual(input = {}) {
+    try {
+      if (!enabled) return { ok: false, reason: "reporting disabled" };
+      if (!allowManual) return { ok: false, reason: "manual reporting disabled" };
+      const tool = String(input.tool ?? "").trim();
+      const summary = String(input.summary ?? "").trim();
+      if (!tool || !summary) {
+        return { ok: false, reason: "tool and summary are required" };
+      }
+      const issueKind = input.kind === "enhancement" ? "enhancement" : "bug";
+      const fp = manualFingerprint(tool, issueKind, summary);
+
+      const payload = {
+        ...envelope("manual", fp),
+        tool,
+        issueKind,
+        summary: redact(summary),
+        expected: input.expected ? redact(String(input.expected)) : undefined,
+        actual: input.actual ? redact(String(input.actual)) : undefined,
+      };
+      if (includeArgs && input.reproArgs !== undefined) {
+        payload.reproArgs = redact(safeStringify(input.reproArgs));
+      }
+      // Explicit user action — no per-process de-dup here; the relay collapses
+      // repeats onto one issue by fingerprint.
+      send(payload, "sap-adt-mcp-manual");
+      return { ok: true, fingerprint: fp, issueKind };
+    } catch {
+      return { ok: false, reason: "internal error" };
+    }
+  }
+
+  return {
+    enabled,
+    endpoint,
+    adtErrors,
+    allowManual,
+    report,
+    reportAdtError,
+    reportManual,
+  };
 }
 
 // Exposed for unit tests.
-export const _internals = { shouldReport, fingerprint, collectSecrets, makeRedactor };
+export const _internals = {
+  shouldReport,
+  shouldReportAdt,
+  fingerprint,
+  adtFingerprint,
+  manualFingerprint,
+  collectSecrets,
+  makeRedactor,
+};

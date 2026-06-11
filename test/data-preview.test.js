@@ -113,3 +113,37 @@ test("parseDataPreview returns empty rows when feed is empty", () => {
   assert.deepEqual(p.rows, []);
   assert.deepEqual(p.columns, []);
 });
+
+test("parseDataPreview handles shape C (column-major table.v1+xml)", () => {
+  // The Accept: application/vnd.sap.adt.datapreview.table.v1+xml shape: one
+  // <columns> block per column, each with its own <dataSet> of <data> cells.
+  const xml = `
+    <dataPreview:tableData xmlns:dataPreview="http://www.sap.com/adt/dataPreview">
+      <dataPreview:totalRows>3</dataPreview:totalRows>
+      <dataPreview:columns>
+        <dataPreview:metadata dataPreview:name="FIELDNAME" dataPreview:type="C" dataPreview:description="Field"/>
+        <dataPreview:dataSet>
+          <dataPreview:data>KDIFF</dataPreview:data>
+          <dataPreview:data>KWERT</dataPreview:data>
+          <dataPreview:data>KBETR</dataPreview:data>
+        </dataPreview:dataSet>
+      </dataPreview:columns>
+      <dataPreview:columns>
+        <dataPreview:metadata dataPreview:name="ROLLNAME" dataPreview:type="C"/>
+        <dataPreview:dataSet>
+          <dataPreview:data>KDIFF</dataPreview:data>
+          <dataPreview:data/>
+          <dataPreview:data>KBETR</dataPreview:data>
+        </dataPreview:dataSet>
+      </dataPreview:columns>
+    </dataPreview:tableData>`;
+  const p = parseDataPreview(xml);
+  assert.equal(p.columns.length, 2);
+  assert.equal(p.totalRows, 3);
+  assert.equal(p.rows.length, 3);
+  assert.equal(p.rows[0].FIELDNAME, "KDIFF");
+  assert.equal(p.rows[0].ROLLNAME, "KDIFF");
+  assert.equal(p.rows[1].FIELDNAME, "KWERT");
+  assert.equal(p.rows[1].ROLLNAME, ""); // self-closing <data/> -> empty cell
+  assert.equal(p.rows[2].FIELDNAME, "KBETR");
+});

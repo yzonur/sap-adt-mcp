@@ -1,19 +1,31 @@
-// sap-adt-mcp crash-report relay.
+// sap-adt-mcp crash/issue-report relay.
 //
-// Receives redacted, fingerprinted crash reports from sap-adt-mcp installs and
-// files / de-duplicates GitHub issues. The GitHub token lives here as a Worker
-// secret (env.GITHUB_TOKEN) and never ships in the distributed package.
+// Receives redacted, fingerprinted reports from sap-adt-mcp installs and files /
+// de-duplicates GitHub issues on yzonur/sap-adt-mcp. The GitHub token lives here
+// as a Worker secret (env.GITHUB_TOKEN) and never ships in the package.
+//
+// Three report kinds (payload.kind), each routed to its own label + de-dup
+// namespace so a human can triage them separately:
+//   crash      -> a tool handler threw            -> label "auto-reported"
+//   adt-error  -> a tool returned a non-2xx ADT   -> label "auto-adt-error"
+//   manual     -> the agent filed it via tool     -> label "agent-reported"
+//
+// Sources (x-report-source header): "sap-adt-mcp" (crash + adt-error) and
+// "sap-adt-mcp-manual" (manual). De-dup: search open issues with the kind's
+// label for the report's fingerprint marker; found -> comment, else -> create.
 //
 // Deploy: see worker/README.md. Set the secret with:
-//   wrangler secret put GITHUB_TOKEN          (fine-grained, Issues: Read & Write on the repo only)
-//
-// De-dup strategy: search open issues labelled "auto-reported" for the report's
-// fingerprint marker. Found -> add a "seen again" comment. Not found -> open a
-// new issue. (GitHub search indexing can lag a few seconds, so a burst of the
-// same brand-new crash may create a couple of duplicates; the client already
-// de-dups per process, keeping this rare.)
+//   wrangler secret put GITHUB_TOKEN --name sap-adt-mcp-reporter
 
 const REPO = "yzonur/sap-adt-mcp";
+
+const ALLOWED_SOURCES = { "sap-adt-mcp": true, "sap-adt-mcp-manual": true };
+
+const KIND = {
+  crash: { label: "auto-reported", prefix: "[auto]" },
+  "adt-error": { label: "auto-adt-error", prefix: "[adt]" },
+  manual: { label: "agent-reported", prefix: "[reported]" },
+};
 
 export default {
   async fetch(req, env) {
@@ -23,7 +35,7 @@ export default {
     if (req.method !== "POST") {
       return new Response("method not allowed", { status: 405 });
     }
-    if (req.headers.get("x-report-source") !== "sap-adt-mcp") {
+    if (!ALLOWED_SOURCES[req.headers.get("x-report-source")]) {
       return new Response("forbidden", { status: 403 });
     }
 
@@ -33,7 +45,8 @@ export default {
     } catch {
       return new Response("bad json", { status: 400 });
     }
-    if (!r || typeof r.fingerprint !== "string" || typeof r.message !== "string") {
+    const conf = r && KIND[r.kind];
+    if (!r || !conf || typeof r.fingerprint !== "string") {
       return new Response("bad report", { status: 400 });
     }
 
@@ -62,6 +75,7 @@ export default {
     };
 
     const meta =
+      "kind: " + r.kind + "\n" +
       "version: " + (r.version || "?") + "\n" +
       "build: " + (r.build || "?") + "\n" +
       "node: " + (r.node || "?") + "\n" +
@@ -69,9 +83,10 @@ export default {
       "tool: " + (r.tool || "?") + "\n" +
       "time: " + (r.timestamp || new Date().toISOString());
 
-    // --- de-dup search ---
+    // --- de-dup search, scoped to this kind's label ---
     const q = encodeURIComponent(
-      'repo:' + REPO + ' is:issue is:open label:auto-reported "fingerprint:' + fp + '" in:body'
+      'repo:' + REPO + ' is:issue is:open label:' + conf.label +
+      ' "fingerprint:' + fp + '" in:body'
     );
     const search = await gh("/search/issues?q=" + q, { method: "GET" });
     const hits = search.ok ? await search.json() : { total_count: 0, items: [] };
@@ -85,35 +100,14 @@ export default {
       return json({ status: "commented", issue: issue.number });
     }
 
-    // --- create new issue ---
-    const shortMsg = r.message.split("\n")[0].slice(0, 80);
-    const title = ("[auto] " + (r.errorName || "Error") + ": " + shortMsg).slice(0, 120);
-
-    const bodyParts = [
-      "Automatically reported by `sap-adt-mcp`. Reports are redacted (no hostnames, users, passwords, IPs, or business data).",
-      "",
-      "**Tool:** `" + (r.tool || "?") + "`",
-      "",
-      "**Message:**",
-      "```",
-      r.message,
-      "```",
-    ];
-    if (r.stack) {
-      bodyParts.push("", "**Stack:**", "```", r.stack, "```");
-    }
-    if (r.args) {
-      bodyParts.push("", "**Args (redacted):**", "```json", r.args, "```");
-    }
-    bodyParts.push("", "**Environment:**", "```", meta, "```", "", "<!-- fingerprint:" + fp + " -->");
+    // --- build title, body, labels per kind ---
+    const title = buildTitle(r, conf);
+    const labels = buildLabels(r, conf);
+    const body = buildBody(r, meta, fp);
 
     const create = await gh("/repos/" + REPO + "/issues", {
       method: "POST",
-      body: JSON.stringify({
-        title,
-        body: bodyParts.join("\n"),
-        labels: ["auto-reported", "bug"],
-      }),
+      body: JSON.stringify({ title: title.slice(0, 120), body, labels }),
     });
     if (!create.ok) {
       const text = await create.text();
@@ -123,6 +117,64 @@ export default {
     return json({ status: "created", issue: issue.number });
   },
 };
+
+function firstLine(s) {
+  return String(s || "").split("\n")[0];
+}
+
+function buildTitle(r, conf) {
+  if (r.kind === "adt-error") {
+    return (
+      conf.prefix + " " + (r.tool || "?") + " " + (r.status || "?") +
+      (r.errorType ? " " + r.errorType : "")
+    );
+  }
+  if (r.kind === "manual") {
+    return conf.prefix + " " + (r.tool || "?") + ": " + firstLine(r.summary).slice(0, 80);
+  }
+  return conf.prefix + " " + (r.errorName || "Error") + ": " + firstLine(r.message).slice(0, 80);
+}
+
+function buildLabels(r, conf) {
+  if (r.kind === "manual") {
+    return [conf.label, r.issueKind === "enhancement" ? "enhancement" : "bug"];
+  }
+  return [conf.label, "bug"];
+}
+
+function fence(content, lang) {
+  return "```" + (lang || "") + "\n" + content + "\n```";
+}
+
+function buildBody(r, meta, fp) {
+  const parts = [
+    "Reported by `sap-adt-mcp` (" + r.kind + "). Redacted - no hostnames, users, passwords, IPs, or business data.",
+    "",
+    "**Tool:** `" + (r.tool || "?") + "`",
+  ];
+
+  if (r.kind === "manual") {
+    parts.push("**Kind:** " + (r.issueKind || "bug"));
+    if (r.summary) parts.push("", "**Summary:** " + r.summary);
+    if (r.expected) parts.push("", "**Expected:**", fence(r.expected));
+    if (r.actual) parts.push("", "**Actual:**", fence(r.actual));
+    if (r.reproArgs) parts.push("", "**Repro args (redacted):**", fence(r.reproArgs, "json"));
+  } else if (r.kind === "adt-error") {
+    parts.push("**Status:** " + (r.status || "?"));
+    if (r.errorType) parts.push("**Error type:** " + r.errorType);
+    if (r.namespace) parts.push("**Namespace:** " + r.namespace);
+    if (r.t100) parts.push("**T100:** " + JSON.stringify(r.t100));
+    if (r.message) parts.push("", "**Message:**", fence(r.message));
+    if (r.args) parts.push("", "**Args (redacted):**", fence(r.args, "json"));
+  } else {
+    if (r.message) parts.push("", "**Message:**", fence(r.message));
+    if (r.stack) parts.push("", "**Stack:**", fence(r.stack));
+    if (r.args) parts.push("", "**Args (redacted):**", fence(r.args, "json"));
+  }
+
+  parts.push("", "**Environment:**", fence(meta), "", "<!-- fingerprint:" + fp + " -->");
+  return parts.join("\n");
+}
 
 function json(obj) {
   return new Response(JSON.stringify(obj), {

@@ -32,6 +32,7 @@ import * as cdsTools from "./tools/cds.js";
 import * as worklistTools from "./tools/worklist.js";
 import * as jobTools from "./tools/jobs.js";
 import * as rapTools from "./tools/rap.js";
+import * as reportTools from "./tools/report.js";
 
 const PKG = JSON.parse(
   readFileSync(
@@ -91,7 +92,7 @@ function getClient(systemName) {
   return { name, client: clientCache.get(name), profile };
 }
 
-const ctx = { getClient, config };
+const ctx = { getClient, config, reporter };
 
 const TOOL_MODULES = [
   connectionTools,
@@ -110,6 +111,7 @@ const TOOL_MODULES = [
   worklistTools,
   jobTools,
   rapTools,
+  reportTools,
 ];
 
 const tools = [];
@@ -147,7 +149,14 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const handler = handlers[name];
   if (!handler) return textResult(`Unknown tool: ${name}`, true);
   try {
-    return await handler(args);
+    const out = await handler(args);
+    // A handler that RETURNED a non-2xx ADT result (vs threw) carries structured
+    // metadata on _adtError — let the reporter's classifier decide if it's a
+    // likely tool defect worth auto-filing. Fire-and-forget; never throws.
+    if (out && out._adtError) {
+      reporter.reportAdtError({ tool: name, args, ...out._adtError });
+    }
+    return out;
   } catch (err) {
     if (err instanceof ReadOnlyViolationError) {
       return textResult(

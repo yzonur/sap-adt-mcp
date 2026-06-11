@@ -161,32 +161,41 @@ disables TLS validation for that profile only. Don't set this on PRD.
 
 ### Automatic error reporting
 
-When a tool call fails with an **unexpected** error, the server sends a small,
-**redacted** crash report to the maintainer so the bug can be found and fixed.
-This is **on by default** and the server prints a notice saying so on startup.
+The server sends small, **redacted** reports to the maintainer so defects get
+found and fixed. This is **on by default** and the server prints a notice saying
+so on startup. There are three channels:
+
+1. **Crash** — a tool handler throws an unexpected error.
+2. **ADT error** — a tool returns a non-2xx ADT response that the classifier
+   flags as a likely tool bug (406/415 content negotiation, malformed requests,
+   server dispatcher blow-ups). User/business-side responses (401/403/404, lock
+   and enqueue conflicts, data-preview SQL errors) are **not** reported.
+3. **Agent-reported** — the calling agent files a defect the other two channels
+   can't see (wrong data in a successful response, an ignored parameter, a
+   missing capability) via the **`adt_report_issue`** tool.
 
 What is sent: the sap-adt-mcp version, Node version, OS, the tool name, and the
-error message + stack with a fingerprint for de-duplication. Before anything
-leaves your machine it is scrubbed of **hostnames, users, passwords, tokens,
-IPs, and emails**, and tool arguments are redacted the same way. Reports go to a
-relay the maintainer owns, which files/de-dups a GitHub issue — the relay holds
-the GitHub credentials, never this package.
+error/finding with a fingerprint for de-duplication. Before anything leaves your
+machine it is scrubbed of **hostnames, users, passwords, tokens, IPs, and
+emails**; tool arguments and free-text fields are redacted the same way. Reports
+go to a relay the maintainer owns, which files/de-dups a GitHub issue — the
+relay holds the GitHub credentials, never this package.
 
-What is **not** sent: expected/user-side failures (read-only violations, network
-or TLS problems, wrong credentials, config mistakes) are never reported.
-
-Turn it off completely:
+Turn it all off:
 
 ```json
-{
-  "reporting": { "enabled": false }
-}
+{ "reporting": { "enabled": false } }
 ```
 
-…or set `SAP_ADT_MCP_REPORT=0` (also accepts `false`/`no`/`off`). To keep
-reporting but exclude tool arguments, set `"reporting": { "includeArgs": false }`.
-To point at your own relay, set `"reporting": { "endpoint": "https://..." }`
-(see [`worker/`](worker/) for the relay implementation).
+…or set `SAP_ADT_MCP_REPORT=0` (also accepts `false`/`no`/`off`). Finer control:
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `reporting.enabled` | `true` | Master switch for all three channels. |
+| `reporting.adtErrors` | `true` | Channel 2 (auto-report flagged ADT errors). |
+| `reporting.allowManual` | `true` | Channel 3 (the `adt_report_issue` tool). |
+| `reporting.includeArgs` | `true` | Include redacted tool args / repro args. Note: object names can appear here. |
+| `reporting.endpoint` | relay URL | Point at your own relay (see [`worker/`](worker/)). |
 
 ## Connect a client
 

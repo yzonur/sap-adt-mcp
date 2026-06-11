@@ -3,6 +3,7 @@ import {
   parseDumpFeed,
   parseDumpMetadata,
   parseDumpChapters,
+  filterDumpsByUser,
   CRITICAL_CHAPTER_KEYS,
 } from "../dump-feed.js";
 import { SYSTEM_HINT } from "./_shared.js";
@@ -22,7 +23,8 @@ export const tools = [
         system: { type: "string", description: SYSTEM_HINT },
         user: {
           type: "string",
-          description: "Filter by the user who triggered the dump.",
+          description:
+            "Filter by the user who triggered the dump (case-insensitive). Enforced client-side — several on-prem releases ignore the server-side user filter.",
         },
         host: {
           type: "string",
@@ -140,12 +142,16 @@ export function register({ getClient }) {
         });
       }
       // Server-side cap is unreliable; some on-prem releases return every
-      // available entry regardless of maxResults. Trim client-side. Strip
-      // the per-entry summary too — on real systems it's a 10+KB HTML chunk
-      // (chapter index + back-link) that bloats list responses past the
-      // tool-output token limit. Agents that need detail call adt_get_dump.
+      // available entry regardless of maxResults. The `user` feed filter is
+      // likewise ignored on several releases, so enforce it client-side before
+      // trimming. Strip the per-entry summary too — on real systems it's a
+      // 10+KB HTML chunk (chapter index + back-link) that bloats list responses
+      // past the tool-output token limit. Agents that need detail call
+      // adt_get_dump.
       const total = entries.length;
-      const trimmed = entries.slice(0, max).map((e) => {
+      const filtered = filterDumpsByUser(entries, args.user);
+      const matched = filtered.length;
+      const trimmed = filtered.slice(0, max).map((e) => {
         // eslint-disable-next-line no-unused-vars
         const { summary, ...rest } = e;
         return rest;
@@ -154,7 +160,8 @@ export function register({ getClient }) {
         system: sys,
         count: trimmed.length,
         totalReturnedByServer: total,
-        truncated: total > trimmed.length,
+        matchedFilter: args.user ? matched : undefined,
+        truncated: matched > trimmed.length,
         dumps: trimmed,
         raw: trimmed.length === 0 ? text.slice(0, 4000) : undefined,
       });

@@ -147,3 +147,127 @@ test("fingerprint is stable across run-specific numbers but varies by error type
   c.stack = a.stack;
   assert.notEqual(fingerprint(a), fingerprint(c), "error type should matter");
 });
+
+// --- Channel 1 (adt-error) and Channel 2 (manual) ---------------------------
+
+async function withCapturedFetchFull(fn) {
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({
+      url,
+      source: init.headers["x-report-source"],
+      body: JSON.parse(init.body),
+    });
+    return { ok: true, status: 200 };
+  };
+  try {
+    await fn(calls);
+    await new Promise((r) => setImmediate(r));
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test("reportAdtError fires on content-negotiation failures (406/415)", async () => {
+  await withCapturedFetchFull(async (calls) => {
+    const reporter = createReporter(baseConfig(), PKG);
+    await reporter.reportAdtError({
+      tool: "adt_read_table",
+      status: 406,
+      type: "ExceptionResourceNotAcceptable",
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].source, "sap-adt-mcp");
+    assert.equal(calls[0].body.kind, "adt-error");
+    assert.equal(calls[0].body.status, 406);
+    assert.equal(calls[0].body.tool, "adt_read_table");
+  });
+});
+
+test("reportAdtError skips user/business-side ADT errors", async () => {
+  await withCapturedFetchFull(async (calls) => {
+    const reporter = createReporter(baseConfig(), PKG);
+    await reporter.reportAdtError({ tool: "adt_get_source", status: 404 }); // not found
+    await reporter.reportAdtError({ tool: "adt_get_source", status: 403 }); // auth
+    await reporter.reportAdtError({
+      tool: "adt_set_source",
+      status: 500,
+      type: "ExceptionResourceSaveFailure",
+      t100: { id: "SLOCK", number: "038" },
+    }); // lock conflict
+    await reporter.reportAdtError({
+      tool: "adt_read_table",
+      status: 400,
+      t100: { id: "ADT_DATAPREVIEW_MSG" },
+      message: "SQL syntax error",
+    }); // data-preview SQL error
+    assert.equal(calls.length, 0);
+  });
+});
+
+test("reportAdtError redacts message and args", async () => {
+  await withCapturedFetchFull(async (calls) => {
+    const reporter = createReporter(baseConfig(), PKG);
+    await reporter.reportAdtError({
+      tool: "adt_where_used",
+      status: 406,
+      message: "failed on https://sap-secret.example.com:44300 for SUPERUSER",
+      args: { host: "https://sap-secret.example.com:44300", user: "SUPERUSER" },
+    });
+    const sent = JSON.stringify(calls[0].body);
+    assert.ok(!sent.includes("sap-secret.example.com"));
+    assert.ok(!sent.includes("SUPERUSER"));
+  });
+});
+
+test("reportManual submits an agent report and returns a status", async () => {
+  await withCapturedFetchFull(async (calls) => {
+    const reporter = createReporter(baseConfig(), PKG);
+    const r = reporter.reportManual({
+      tool: "adt_list_dumps",
+      kind: "bug",
+      summary: "user filter has no effect",
+      expected: "only SOMEUSER dumps",
+      actual: "all dumps",
+      reproArgs: { user: "SUPERUSER", host: "https://sap-secret.example.com:44300" },
+    });
+    assert.equal(r.ok, true);
+    assert.equal(r.issueKind, "bug");
+    assert.match(r.fingerprint, /^[0-9a-f]{16}$/);
+    await new Promise((res) => setImmediate(res));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].source, "sap-adt-mcp-manual");
+    assert.equal(calls[0].body.kind, "manual");
+    const sent = JSON.stringify(calls[0].body);
+    assert.ok(!sent.includes("sap-secret.example.com"), "reproArgs host leaked");
+    assert.ok(!sent.includes("SUPERUSER"), "reproArgs user leaked");
+  });
+});
+
+test("reportManual validates input and honors allowManual=false", async () => {
+  await withCapturedFetchFull(async (calls) => {
+    const off = createReporter(baseConfig({ allowManual: false }), PKG);
+    assert.equal(off.reportManual({ tool: "x", summary: "y" }).ok, false);
+
+    const on = createReporter(baseConfig(), PKG);
+    assert.equal(on.reportManual({ summary: "no tool" }).ok, false);
+    assert.equal(on.reportManual({ tool: "x" }).ok, false); // no summary
+    await new Promise((r) => setImmediate(r));
+    assert.equal(calls.length, 0);
+  });
+});
+
+test("manual enhancement maps to issueKind=enhancement", async () => {
+  await withCapturedFetchFull(async (calls) => {
+    const reporter = createReporter(baseConfig(), PKG);
+    const r = reporter.reportManual({
+      tool: "adt_syntax_check",
+      kind: "enhancement",
+      summary: "add context param for includes",
+    });
+    assert.equal(r.issueKind, "enhancement");
+    await new Promise((res) => setImmediate(res));
+    assert.equal(calls[0].body.issueKind, "enhancement");
+  });
+});

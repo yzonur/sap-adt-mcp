@@ -65,6 +65,10 @@ function parseReporting(raw) {
     enabled: envOff ? false : r.enabled !== false,
     endpoint: typeof r.endpoint === "string" && r.endpoint ? r.endpoint : null,
     includeArgs: r.includeArgs !== false,
+    // Channel 1: auto-report selected non-2xx ADT results (406/415/malformed).
+    adtErrors: r.adtErrors !== false,
+    // Channel 2: allow the adt_report_issue tool to file agent-initiated reports.
+    allowManual: r.allowManual !== false,
   };
 }
 
