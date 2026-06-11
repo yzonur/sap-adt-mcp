@@ -6,6 +6,8 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.0]
+
 ### Added
 
 - **Automatic, privacy-preserving crash reporting.** When a tool call throws an
