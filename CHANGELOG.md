@@ -6,6 +6,8 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.1]
+
 ### Fixed
 
 - **`adt_read_table` returned `rows: []` despite `totalRows > 0` (#2).** The
