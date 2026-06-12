@@ -6,6 +6,19 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.42]
+
+### Fixed
+
+- **DDIC structures routed to the wrong ADT endpoint (#13).** The `structure`
+  type alias mapped to `TABL` → `/sap/bc/adt/ddic/tables/…`, so reading, locking,
+  or editing a structure hit the tables endpoint (or failed), forcing callers to
+  hand-roll raw `adt_request` calls against `/sap/bc/adt/ddic/structures/…`.
+  Structures now have their own type (`STRU` → `/sap/bc/adt/ddic/structures/…`),
+  so `adt_get_source`, `adt_lock`, `adt_set_source`, and `adt_activate` all work
+  with `type: "structure"` — no escape hatch needed. (Found by mining the
+  auto-reported issues for `adt_request` usage.)
+
 ## [0.8.41]
 
 ### Added

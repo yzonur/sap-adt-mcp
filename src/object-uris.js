@@ -25,7 +25,10 @@ const TYPE_ALIASES = {
   fugr: "FUGR",
   table: "TABL",
   tabl: "TABL",
-  structure: "TABL",
+  // Structures live at their own ADT endpoint (/ddic/structures), NOT
+  // /ddic/tables — routing them to TABL sent reads/locks to the wrong URI.
+  structure: "STRU",
+  stru: "STRU",
   dataelement: "DTEL",
   dtel: "DTEL",
   domain: "DOMA",
@@ -105,6 +108,8 @@ export function objectUri({ type, name, group }) {
     }
     case "TABL":
       return `/sap/bc/adt/ddic/tables/${enc(n)}`;
+    case "STRU":
+      return `/sap/bc/adt/ddic/structures/${enc(n)}`;
     case "DTEL":
       return `/sap/bc/adt/ddic/dataelements/${enc(n)}`;
     case "DOMA":
@@ -160,7 +165,7 @@ export function sourceUri({ type, name, group, include }) {
   // via the object URI directly, returned as XML. CDS / DCLS / DDLX / BDEF do
   // use /source/main.
   if (t === "DTEL" || t === "DOMA" || t === "MSAG") return base;
-  if (t === "TABL") return `${base}/source/main`;
+  if (t === "TABL" || t === "STRU") return `${base}/source/main`;
 
   return `${base}/source/main`;
 }
