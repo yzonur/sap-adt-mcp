@@ -8,36 +8,39 @@ Effort legend: 🟢 ~2 min · 🟡 ~10 min · ⚪ automatic (nothing to do).
 
 ---
 
-## 1. Official MCP Registry 🟡 — highest priority
+## 1. Official MCP Registry — ✅ PUBLISHED
 
-The registry that client "add MCP server" UIs increasingly read from. Manifest
-lives in the repo as [`server.json`](../server.json) (already prepared).
+Listed as `io.github.yzonur/sap-adt-mcp` at registry.modelcontextprotocol.io.
+Manifest is [`server.json`](../server.json).
+
+Ownership is verified two ways, both already in place:
+- `package.json` carries `"mcpName": "io.github.yzonur/sap-adt-mcp"` (the
+  registry fetches the published npm package and matches this field);
+- the `mcp-publisher` login proves the `io.github.yzonur` GitHub namespace.
+
+Headless re-publish (no browser needed — uses the gh token), for **every
+release**:
 
 ```bash
-# install the publisher CLI (see github.com/modelcontextprotocol/registry for
-# the current install method — Homebrew / Go / release binary)
-mcp-publisher login github      # opens browser OAuth, like `gh auth login`
-mcp-publisher publish           # reads ./server.json and publishes it
+# 1. bump the two "version" fields in server.json to the new npm version first
+# 2. download the CLI (darwin-arm64 shown):
+curl -sL https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_darwin_arm64.tar.gz | tar xz
+./mcp-publisher login github --token "$(gh auth token)"
+./mcp-publisher validate     # description must be <= 100 chars
+./mcp-publisher publish
 ```
 
-- Namespace `io.github.yzonur/sap-adt-mcp` is proven by the GitHub OAuth above.
-- If `mcp-publisher init` reports a schema mismatch, let it regenerate
-  `server.json` (it matches the current schema), then copy the `description` and
-  the `SAP_ADT_MCP_CONFIG` env block from our version into it.
-- **Re-publish on every release:** bump the two `version` fields in `server.json`
-  to match the new npm version, then `mcp-publisher publish` again.
+Schema in use: `…/schemas/2025-12-11/server.schema.json` (run `mcp-publisher init`
+to regenerate against the current schema if it ever changes).
 
-## 2. Smithery 🟡
+## 2. Smithery — ❌ not applicable
 
-Manifest is [`smithery.yaml`](../smithery.yaml) (already prepared, configured as
-a local stdio server since it needs your SAP creds + network).
-
-1. Sign in at https://smithery.ai with GitHub.
-2. "Add server" / "Deploy" → point it at `github.com/yzonur/sap-adt-mcp`.
-3. It reads `smithery.yaml`; confirm the metadata. Done.
-
-Note: Smithery's "hosted run" doesn't apply here (local-only tool) — it acts as
-a directory + config-snippet generator.
+Checked 2026-06-12: Smithery's "Publish → MCP" flow only accepts **remote/hosted
+servers with a public HTTPS MCP URL**. sap-adt-mcp is local (stdio) and connects
+to the user's SAP host with their credentials, so it has no public URL and can't
+be hosted. No GitHub/local listing path exists. Skipped — no loss.
+(`smithery.yaml` is kept in the repo in case Smithery re-adds local-server
+listing or other tooling reads it.)
 
 ## 3. Glama ⚪
 
