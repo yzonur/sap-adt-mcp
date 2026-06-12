@@ -124,3 +124,10 @@ test("METADATA_XML_ACCEPT covers the DDIC primitives that 406 on text/plain", as
   // The object URI for a data element is where the XML metadata is served.
   assert.equal(objectUri({ type: "dataelement", name: "KDIFF" }), "/sap/bc/adt/ddic/dataelements/kdiff");
 });
+
+test("objectUri throws a clear error when name is missing (guards against TypeError crash)", () => {
+  // Regression: a caller passing `name`-less args (e.g. wrong field name) used
+  // to crash with "Cannot read properties of undefined (reading 'toLowerCase')".
+  assert.throws(() => objectUri({ type: "CLAS" }), /Object name is required/);
+  assert.throws(() => objectUri({ type: "CLAS", name: "" }), /Object name is required/);
+});

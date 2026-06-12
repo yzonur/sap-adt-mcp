@@ -314,8 +314,17 @@ export function register({ getClient }) {
     },
 
     adt_list_packages: async (args) => {
+      // `package` is the field name on the sibling adt_browse_package tool, so
+      // callers reach for it here too — accept it as an alias for `root`.
+      const rootArg = args.root ?? args.package;
+      if (typeof rootArg !== "string" || rootArg.length === 0) {
+        return textResult(
+          "adt_list_packages: `root` is required (the root package to walk from, e.g. 'ZFLEET').",
+          true
+        );
+      }
       const { client, name: sys } = getClient(args.system);
-      const root = args.root.toUpperCase();
+      const root = rootArg.toUpperCase();
       const max = args.maxPackages ?? 200;
       const prefix = args.prefix ?? defaultDescendPrefix(root);
 

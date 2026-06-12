@@ -1,6 +1,6 @@
 import { sourceUri, objectUri, normalizeType, METADATA_XML_ACCEPT } from "../object-uris.js";
 import { acquireLock, releaseLock } from "../lock.js";
-import { errorResult, jsonResult } from "../result.js";
+import { errorResult, jsonResult, textResult } from "../result.js";
 import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
 
 const TOP_LEVEL_KEYWORDS = [
@@ -272,6 +272,19 @@ export const tools = [
 export function register({ getClient }) {
   return {
     adt_get_source: async (args) => {
+      if (typeof args.object !== "string" || args.object.length === 0) {
+        const hint =
+          args.name !== undefined
+            ? " (you passed `name` — the field is `object`)"
+            : "";
+        return textResult(
+          `adt_get_source: \`object\` is required${hint}. Also use \`firstLine\`/\`lastLine\` (not \`line\`/\`endLine\`) to paginate.`,
+          true
+        );
+      }
+      if (typeof args.type !== "string" || args.type.length === 0) {
+        return textResult("adt_get_source: `type` is required (e.g. 'class', 'program', 'dataelement').", true);
+      }
       const { client, name: sys } = getClient(args.system);
       const t = normalizeType(args.type);
       const path = sourceUri({

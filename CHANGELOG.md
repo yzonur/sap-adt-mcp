@@ -6,6 +6,26 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.3]
+
+### Fixed
+
+- **Crash on mis-shaped tool calls, surfaced by auto-report (#10, #11).** A tool
+  call missing a required argument (or using the wrong field name) crashed with
+  an opaque `TypeError: Cannot read properties of undefined`. `objectUri` now
+  guards the object name; `adt_get_source` validates `object`/`type` up front
+  and points the caller at the right fields (`object` not `name`,
+  `firstLine`/`lastLine` not `line`/`endLine`); `adt_list_packages` validates
+  `root` and accepts `package` as an alias (its sibling `adt_browse_package`
+  uses that name). These now return a friendly error instead of throwing.
+- **Network failures were auto-reported as bugs (#12).** undici raises a generic
+  `TypeError: fetch failed` whose real reason lives on `err.cause`; the reporter
+  only inspected `err.code` and filed it as a crash. The ADT client now wraps
+  such failures into a clear `ADT request failed (…): <reason>` error carrying
+  the underlying code, and the reporter's classifier skips network errors
+  (via `err.cause.code`), the wrapped message, and input-validation errors
+  (`… is required`, `Unsupported object type`).
+
 ## [0.8.2]
 
 ### Added

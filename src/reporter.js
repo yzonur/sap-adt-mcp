@@ -29,9 +29,10 @@ const MAX_FIELD = 4000;
 
 const SKIP_NAMES = new Set(["ReadOnlyViolationError", "AbortError"]);
 
-// Configuration / setup mistakes — the user's environment, not a bug.
+// Configuration / setup mistakes and input-validation errors — the user's
+// environment or a mis-shaped tool call, not a bug in the tool.
 const SKIP_MESSAGE_RE =
-  /(No config found|must be a non-empty string|env var .* is not set|No system specified|Unknown system '|No systems configured|password must be a string|Failed to parse config)/i;
+  /(No config found|must be a non-empty string|env var .* is not set|No system specified|Unknown system '|No systems configured|password must be a string|Failed to parse config|is required\b|Unsupported object type|ADT request failed|ADT request timed out|fetch failed)/i;
 
 // Network / TLS problems live on the user's side (firewall, VPN, cert, host down).
 const NETWORK_CODES = new Set([
@@ -48,7 +49,22 @@ const NETWORK_CODES = new Set([
   "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
   "CERT_HAS_EXPIRED",
   "ERR_TLS_CERT_ALTNAME_INVALID",
+  // undici / our wrapped network failures.
+  "ADT_FETCH_FAILED",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "EPROTO",
+  "ECONNABORTED",
 ]);
+
+function isNetworkError(err) {
+  if (err?.code && NETWORK_CODES.has(err.code)) return true;
+  // undici nests the real reason on .cause.
+  if (err?.cause?.code && NETWORK_CODES.has(err.cause.code)) return true;
+  return false;
+}
 
 // Authentication / authorization — wrong credentials or missing SAP roles.
 const AUTH_RE = /\b(401|403)\b|unauthor|forbidden|invalid credential|logon failed/i;
@@ -56,7 +72,7 @@ const AUTH_RE = /\b(401|403)\b|unauthor|forbidden|invalid credential|logon faile
 function shouldReport(err) {
   if (!err) return false;
   if (SKIP_NAMES.has(err.name)) return false;
-  if (err.code && NETWORK_CODES.has(err.code)) return false;
+  if (isNetworkError(err)) return false;
   const msg = String(err.message ?? "");
   if (SKIP_MESSAGE_RE.test(msg)) return false;
   if (AUTH_RE.test(msg)) return false;
