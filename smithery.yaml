@@ -1,0 +1,23 @@
+# Smithery configuration — https://smithery.ai/docs
+# sap-adt-mcp runs LOCALLY (stdio): it needs access to your SAP host and your
+# SAP credentials, so it cannot be hosted remotely. Smithery lists it as a
+# local server and generates the install/config snippet.
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      configPath:
+        type: string
+        title: Config file path
+        description: >-
+          Absolute path to your sap-adt-mcp config.json (host / client / user /
+          password per SAP system). Leave empty to use ~/.sap-adt-mcp/config.json.
+          See config.example.json in the repo for the format.
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: 'npx',
+      args: ['-y', 'sap-adt-mcp'],
+      env: config.configPath ? { SAP_ADT_MCP_CONFIG: config.configPath } : {}
+    })

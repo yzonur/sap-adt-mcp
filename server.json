@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.json",
+  "name": "io.github.yzonur/sap-adt-mcp",
+  "description": "Live access to SAP ABAP via ADT — read, search, syntax-check, run ATC/unit tests, triage dumps, and edit objects from any MCP client.",
+  "version": "0.8.4",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/yzonur/sap-adt-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "sap-adt-mcp",
+      "version": "0.8.4",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SAP_ADT_MCP_CONFIG",
+          "description": "Absolute path to your config.json (host/client/user/password per SAP system). Defaults to ~/.sap-adt-mcp/config.json. See config.example.json in the repo.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
