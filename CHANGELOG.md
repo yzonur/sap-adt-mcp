@@ -6,6 +6,15 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.41]
+
+### Added
+
+- **`mcpName` in package.json** (`io.github.yzonur/sap-adt-mcp`) so the package
+  can be published to the official MCP Registry, which verifies namespace
+  ownership by matching this field in the published npm package. Repo also gains
+  `server.json` (registry manifest) and `smithery.yaml`. No code changes.
+
 ## [0.8.4]
 
 ### Fixed
