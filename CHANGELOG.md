@@ -6,6 +6,16 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.4]
+
+### Fixed
+
+- **`adt_request` errors were auto-reported as tool bugs (#13).** The ADT-error
+  channel filed non-2xx results from the raw `adt_request` escape hatch — but
+  there the caller fully specifies the request, so a 4xx/5xx is the request
+  shape, not a defect. The classifier now skips `adt_request` entirely; errors
+  from first-class tools are still reported.
+
 ## [0.8.3]
 
 ### Fixed
