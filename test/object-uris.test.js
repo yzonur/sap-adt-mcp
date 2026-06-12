@@ -131,3 +131,13 @@ test("objectUri throws a clear error when name is missing (guards against TypeEr
   assert.throws(() => objectUri({ type: "CLAS" }), /Object name is required/);
   assert.throws(() => objectUri({ type: "CLAS", name: "" }), /Object name is required/);
 });
+
+test("structures route to /ddic/structures (not /ddic/tables) — fixes the gap behind #13", () => {
+  assert.equal(normalizeType("structure"), "STRU");
+  assert.equal(normalizeType("STRU"), "STRU");
+  // Object URI (used by lock / activate) and source URI (get/set source).
+  assert.equal(objectUri({ type: "structure", name: "ZSFOO" }), "/sap/bc/adt/ddic/structures/zsfoo");
+  assert.equal(sourceUri({ type: "structure", name: "ZSFOO" }), "/sap/bc/adt/ddic/structures/zsfoo/source/main");
+  // Tables stay on their own endpoint.
+  assert.equal(objectUri({ type: "table", name: "MARA" }), "/sap/bc/adt/ddic/tables/mara");
+});
