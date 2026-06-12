@@ -271,3 +271,33 @@ test("manual enhancement maps to issueKind=enhancement", async () => {
     assert.equal(calls[0].body.issueKind, "enhancement");
   });
 });
+
+test("shouldReport skips network failures, including undici 'fetch failed' (cause.code)", () => {
+  const { shouldReport } = _internals;
+
+  // Bare network code.
+  assert.equal(shouldReport(Object.assign(new Error("x"), { code: "ECONNRESET" })), false);
+
+  // undici TypeError: fetch failed, real reason on .cause.
+  const undici = new TypeError("fetch failed");
+  undici.cause = Object.assign(new Error("socket"), { code: "UND_ERR_SOCKET" });
+  assert.equal(shouldReport(undici), false);
+
+  // Our wrapped client error.
+  assert.equal(
+    shouldReport(Object.assign(new Error("ADT request failed (GET /x): ECONNRESET. Check connectivity"), { code: "ADT_FETCH_FAILED" })),
+    false
+  );
+
+  // Bare "fetch failed" message with no code still skipped.
+  assert.equal(shouldReport(new TypeError("fetch failed")), false);
+});
+
+test("shouldReport skips input-validation errors (mis-shaped tool calls)", () => {
+  const { shouldReport } = _internals;
+  assert.equal(shouldReport(new Error("Object name is required")), false);
+  assert.equal(shouldReport(new Error("Object type is required")), false);
+  assert.equal(shouldReport(new Error("Unsupported object type: ZZZ")), false);
+  // A genuine programming bug is still reported.
+  assert.equal(shouldReport(new TypeError("Cannot read properties of undefined (reading 'foo')")), true);
+});

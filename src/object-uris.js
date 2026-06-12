@@ -72,6 +72,9 @@ export function normalizeType(input) {
 
 export function objectUri({ type, name, group }) {
   const t = normalizeType(type);
+  if (typeof name !== "string" || name.length === 0) {
+    throw new Error("Object name is required");
+  }
   const n = name.toLowerCase();
   switch (t) {
     case "PROG":

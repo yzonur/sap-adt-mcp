@@ -240,6 +240,21 @@ export class AdtClient {
           { cause: err }
         );
       }
+      // undici throws a generic "fetch failed" whose real reason (ECONNRESET,
+      // ENOTFOUND, TLS error, socket hang up…) lives on err.cause. Surface a
+      // clear message and carry the underlying code so this reads as the
+      // network/environment problem it is — not a tool bug.
+      if (err instanceof TypeError && /fetch failed/i.test(err.message ?? "")) {
+        const cause = err.cause;
+        const reason = cause?.code || cause?.message || "network error";
+        const wrapped = new Error(
+          `ADT request failed (${method} ${adtPath}): ${reason}. ` +
+            `Check connectivity to the SAP host, VPN, and TLS/cert settings.`
+        );
+        wrapped.code = cause?.code ?? "ADT_FETCH_FAILED";
+        wrapped.cause = err;
+        throw wrapped;
+      }
       throw err;
     } finally {
       clearTimeout(timer);
