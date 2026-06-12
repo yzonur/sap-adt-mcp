@@ -184,6 +184,12 @@ const BUSINESS_TYPE_RE =
 // toward NOT reporting; the relay labels survivors `auto-adt-error` for cheap
 // human triage.
 function shouldReportAdt(meta = {}) {
+  // adt_request is the raw escape hatch — the caller fully specifies the
+  // method/path/headers, so a non-2xx is their request shape, not a tool defect.
+  // Never auto-file these (the agent improvising over the escape hatch would
+  // otherwise spam the tracker).
+  if (meta.tool === "adt_request") return false;
+
   const s = Number(meta.status);
   const type = String(meta.type ?? "");
   const t100id = String(meta.t100?.id ?? "");

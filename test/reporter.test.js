@@ -301,3 +301,21 @@ test("shouldReport skips input-validation errors (mis-shaped tool calls)", () =>
   // A genuine programming bug is still reported.
   assert.equal(shouldReport(new TypeError("Cannot read properties of undefined (reading 'foo')")), true);
 });
+
+test("reportAdtError never fires for the adt_request escape hatch", async () => {
+  await withCapturedFetchFull(async (calls) => {
+    const reporter = createReporter(baseConfig(), PKG);
+    // A 406 that would normally be reported — but via adt_request it's the
+    // caller's hand-crafted request, not a tool bug.
+    await reporter.reportAdtError({
+      tool: "adt_request",
+      status: 406,
+      type: "ExceptionResourceNotAcceptable",
+      message: "Unsupported Media Type",
+    });
+    assert.equal(calls.length, 0);
+    // Sanity: the same error from a first-class tool still reports.
+    await reporter.reportAdtError({ tool: "adt_read_table", status: 406, type: "ExceptionResourceNotAcceptable" });
+    assert.equal(calls.length, 1);
+  });
+});
