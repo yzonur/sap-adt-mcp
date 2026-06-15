@@ -285,6 +285,23 @@ export function register({ getClient }) {
       if (typeof args.type !== "string" || args.type.length === 0) {
         return textResult("adt_get_source: `type` is required (e.g. 'class', 'program', 'dataelement').", true);
       }
+
+      if (
+        typeof args.url === "string" &&
+        args.url.length > 0 &&
+        (
+          typeof args.object !== "string" ||
+          args.object.length === 0 ||
+          typeof args.type !== "string" ||
+          args.type.length === 0
+        )
+      ) {
+        return textResult(
+          "adt_get_source currently requires both `object` and `type`. URL-only lookups are not supported.",
+          true
+        );
+      }
+
       const { client, name: sys } = getClient(args.system);
       const t = normalizeType(args.type);
       const path = sourceUri({
