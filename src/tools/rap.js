@@ -1,4 +1,4 @@
-import { buildCreateRequest } from "../object-create.js";
+import { buildCreateRequest, postCreate } from "../object-create.js";
 import { sourceUri } from "../object-uris.js";
 import { acquireLock, releaseLock } from "../lock.js";
 import { escapeXml } from "../xml.js";
@@ -159,15 +159,13 @@ function createInfoFor(artifact, spec) {
 
 async function createAndWrite(client, artifact, spec) {
   const info = createInfoFor(artifact, spec);
-  // 1) create the object
-  const createRes = await client.request({
-    method: "POST",
+  // 1) create the object (retrying with lower media-type versions on 415)
+  const { res: createRes, text: createText } = await postCreate(client, {
     path: info.path,
-    headers: { "Content-Type": info.contentType },
-    query: spec.transport ? { corrNr: spec.transport } : undefined,
+    contentType: info.contentType,
     body: info.body,
+    query: spec.transport ? { corrNr: spec.transport } : undefined,
   });
-  const createText = await createRes.text();
   if (!createRes.ok) {
     return { name: artifact.name, stage: "create", status: createRes.status, error: createText.slice(0, 400) };
   }

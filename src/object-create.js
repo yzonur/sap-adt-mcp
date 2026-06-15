@@ -201,6 +201,48 @@ export function buildCreateRequest({
   }
 }
 
+// Most ADT create endpoints version their media type (…v2+xml, …v3+xml). The
+// shapes above target the newest version a modern stack accepts, but older
+// systems only know an earlier one and answer the newer media type with
+// 415 ExceptionUnsupportedMediaType. Given a content-type, return the chain to
+// try: the requested version first, then every lower version down to v1.
+// A content-type with no `.vN+xml` segment is returned unchanged (single item).
+export function mediaTypeFallbacks(contentType) {
+  const m = /^(.*\.)v(\d+)(\+xml)$/.exec(contentType);
+  if (!m) return [contentType];
+  const [, prefix, ver, suffix] = m;
+  const chain = [];
+  for (let v = Number(ver); v >= 1; v--) {
+    chain.push(`${prefix}v${v}${suffix}`);
+  }
+  return chain;
+}
+
+// POST a create request, retrying with successively lower media-type versions
+// when the server rejects the content-type with 415. Returns
+// { res, text, contentType } for the first attempt that is not a 415 — or the
+// last attempt if every version is rejected. The body is read once here so
+// callers must use the returned `text` rather than calling res.text() again.
+export async function postCreate(client, { path, contentType, body, query }) {
+  const types = mediaTypeFallbacks(contentType);
+  let res;
+  let text;
+  let used;
+  for (let i = 0; i < types.length; i++) {
+    used = types[i];
+    res = await client.request({
+      method: "POST",
+      path,
+      query,
+      headers: { "Content-Type": used },
+      body,
+    });
+    text = await res.text();
+    if (res.status !== 415 || i === types.length - 1) break;
+  }
+  return { res, text, contentType: used };
+}
+
 function xmlDecl() {
   return `<?xml version="1.0" encoding="UTF-8"?>`;
 }

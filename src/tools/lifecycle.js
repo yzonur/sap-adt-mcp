@@ -1,7 +1,7 @@
 import { objectUri, normalizeType } from "../object-uris.js";
 import { escapeXml } from "../xml.js";
 import { acquireLock, releaseLock } from "../lock.js";
-import { buildCreateRequest } from "../object-create.js";
+import { buildCreateRequest, postCreate } from "../object-create.js";
 import { errorResult, jsonResult, textResult } from "../result.js";
 import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
 
@@ -199,14 +199,12 @@ export function register({ getClient }) {
       }
       const query = {};
       if (args.transport) query.corrNr = args.transport;
-      const res = await client.request({
-        method: "POST",
+      const { res, text } = await postCreate(client, {
         path: req.path,
-        query,
-        headers: { "Content-Type": req.contentType },
+        contentType: req.contentType,
         body: req.body,
+        query,
       });
-      const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
       const newUri = objectUri({
         type: args.type,

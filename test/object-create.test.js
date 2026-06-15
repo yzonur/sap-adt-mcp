@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildCreateRequest } from "../src/object-create.js";
+import { buildCreateRequest, mediaTypeFallbacks, postCreate } from "../src/object-create.js";
 
 test("missing name or package throws", () => {
   assert.throws(() => buildCreateRequest({ type: "class" }), /name/);
@@ -137,4 +137,91 @@ test("responsible attribute included when provided", () => {
     responsible: "developer",
   });
   assert.match(r.body, /adtcore:responsible="DEVELOPER"/);
+});
+
+test("mediaTypeFallbacks walks versioned content types down to v1", () => {
+  assert.deepEqual(mediaTypeFallbacks("application/vnd.sap.adt.ddlsource.v2+xml"), [
+    "application/vnd.sap.adt.ddlsource.v2+xml",
+    "application/vnd.sap.adt.ddlsource.v1+xml",
+  ]);
+  assert.deepEqual(mediaTypeFallbacks("application/vnd.sap.adt.oo.classes.v3+xml"), [
+    "application/vnd.sap.adt.oo.classes.v3+xml",
+    "application/vnd.sap.adt.oo.classes.v2+xml",
+    "application/vnd.sap.adt.oo.classes.v1+xml",
+  ]);
+});
+
+test("mediaTypeFallbacks leaves unversioned content types untouched", () => {
+  assert.deepEqual(mediaTypeFallbacks("text/plain"), ["text/plain"]);
+  assert.deepEqual(mediaTypeFallbacks("application/vnd.sap.adt.foo+xml"), [
+    "application/vnd.sap.adt.foo+xml",
+  ]);
+});
+
+test("postCreate retries with a lower media-type version on 415", async () => {
+  const attempts = [];
+  const client = {
+    async request({ headers }) {
+      attempts.push(headers["Content-Type"]);
+      const is415 = headers["Content-Type"].includes(".v2+xml");
+      return {
+        ok: !is415,
+        status: is415 ? 415 : 201,
+        async text() {
+          return is415 ? "Unsupported Media Type" : "<created/>";
+        },
+      };
+    },
+  };
+  const { res, text, contentType } = await postCreate(client, {
+    path: "/sap/bc/adt/ddic/ddl/sources",
+    contentType: "application/vnd.sap.adt.ddlsource.v2+xml",
+    body: "<ddl/>",
+  });
+  assert.deepEqual(attempts, [
+    "application/vnd.sap.adt.ddlsource.v2+xml",
+    "application/vnd.sap.adt.ddlsource.v1+xml",
+  ]);
+  assert.equal(res.status, 201);
+  assert.equal(res.ok, true);
+  assert.equal(text, "<created/>");
+  assert.equal(contentType, "application/vnd.sap.adt.ddlsource.v1+xml");
+});
+
+test("postCreate stops at the first non-415 response", async () => {
+  const attempts = [];
+  const client = {
+    async request({ headers }) {
+      attempts.push(headers["Content-Type"]);
+      return { ok: true, status: 201, async text() { return "ok"; } };
+    },
+  };
+  const { res } = await postCreate(client, {
+    path: "/x",
+    contentType: "application/vnd.sap.adt.oo.classes.v3+xml",
+    body: "<x/>",
+  });
+  assert.deepEqual(attempts, ["application/vnd.sap.adt.oo.classes.v3+xml"]);
+  assert.equal(res.status, 201);
+});
+
+test("postCreate returns the last 415 when every version is rejected", async () => {
+  const attempts = [];
+  const client = {
+    async request({ headers }) {
+      attempts.push(headers["Content-Type"]);
+      return { ok: false, status: 415, async text() { return "nope"; } };
+    },
+  };
+  const { res, contentType } = await postCreate(client, {
+    path: "/x",
+    contentType: "application/vnd.sap.adt.ddlsource.v2+xml",
+    body: "<x/>",
+  });
+  assert.deepEqual(attempts, [
+    "application/vnd.sap.adt.ddlsource.v2+xml",
+    "application/vnd.sap.adt.ddlsource.v1+xml",
+  ]);
+  assert.equal(res.status, 415);
+  assert.equal(contentType, "application/vnd.sap.adt.ddlsource.v1+xml");
 });

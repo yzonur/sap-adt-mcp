@@ -6,6 +6,21 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.43]
+
+### Fixed
+
+- **`adt_create_object` failed with 415 on systems that don't accept the newest
+  media type (#17).** Each create endpoint sent a single hard-coded, versioned
+  content-type (e.g. `…ddlsource.v2+xml`); systems that only support an earlier
+  version answered with `415 ExceptionUnsupportedMediaType` and the create just
+  failed (reported against `type: "cds"`). Creates now retry with successively
+  lower media-type versions (`v3 → v2 → v1`) when the server rejects the
+  content-type, so objects create on older NetWeaver / S/4 releases too. Applies
+  to every versioned create kind and to the `adt_rap_scaffold` stack, via the new
+  shared `postCreate` helper in `src/object-create.js`. Backward-compatible:
+  modern systems still succeed on the first attempt with no extra request.
+
 ## [0.8.42]
 
 ### Fixed
