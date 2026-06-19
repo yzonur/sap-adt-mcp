@@ -73,8 +73,21 @@ export function normalizeType(input) {
   return aliased ?? upper;
 }
 
+// ADT types arrive either as a bare key (CLAS, SRVD) or in TADIR-style
+// TYPE/SUBTYPE form (SRVD/SRV, CLAS/OC, DDLS/DF). The subtype only changes the
+// endpoint for function-group members (FUGR/FF module, FUGR/I include); for
+// every other kind it is decoration, so collapse X/Y to its base type X. Without
+// this, a TYPE/SUBTYPE input misses the dispatch table and throws "Unsupported
+// object type".
+function collapseSubtype(t) {
+  if (t.includes("/") && t !== "FUGR/FF" && t !== "FUGR/I") {
+    return t.split("/")[0];
+  }
+  return t;
+}
+
 export function objectUri({ type, name, group }) {
-  const t = normalizeType(type);
+  const t = collapseSubtype(normalizeType(type));
   if (typeof name !== "string" || name.length === 0) {
     throw new Error("Object name is required");
   }
@@ -145,7 +158,7 @@ export const METADATA_XML_ACCEPT = {
 };
 
 export function sourceUri({ type, name, group, include }) {
-  const t = normalizeType(type);
+  const t = collapseSubtype(normalizeType(type));
   const base = objectUri({ type: t, name, group });
 
   if (t === "CLAS") {

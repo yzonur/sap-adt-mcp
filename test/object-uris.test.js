@@ -24,6 +24,53 @@ test("normalizeType throws on empty input", () => {
   assert.throws(() => normalizeType(undefined), /required/);
 });
 
+test("objectUri collapses TADIR TYPE/SUBTYPE to the base endpoint (#21)", () => {
+  // Subtype is decoration for everything except function-group members; a
+  // TYPE/SUBTYPE input must still resolve, not throw "Unsupported object type".
+  assert.equal(
+    objectUri({ type: "SRVD/SRV", name: "Z_MY_SRVD" }),
+    "/sap/bc/adt/ddic/srvd/sources/z_my_srvd"
+  );
+  assert.equal(
+    objectUri({ type: "CLAS/OC", name: "ZCL_FOO" }),
+    "/sap/bc/adt/oo/classes/zcl_foo"
+  );
+  assert.equal(
+    objectUri({ type: "DDLS/DF", name: "Z_CDS" }),
+    "/sap/bc/adt/ddic/ddl/sources/z_cds"
+  );
+});
+
+test("objectUri keeps function-group subtypes significant", () => {
+  assert.equal(
+    objectUri({ type: "FUGR/FF", name: "Z_FM", group: "ZGRP" }),
+    "/sap/bc/adt/functions/groups/zgrp/fmodules/z_fm"
+  );
+  // A bare FUGR/F (group) collapses to the group endpoint.
+  assert.equal(
+    objectUri({ type: "FUGR/F", name: "ZGRP" }),
+    "/sap/bc/adt/functions/groups/zgrp"
+  );
+});
+
+test("sourceUri resolves TYPE/SUBTYPE source paths (#21)", () => {
+  assert.equal(
+    sourceUri({ type: "SRVD/SRV", name: "Z_MY_SRVD" }),
+    "/sap/bc/adt/ddic/srvd/sources/z_my_srvd/source/main"
+  );
+  assert.equal(
+    sourceUri({ type: "CLAS/OC", name: "ZCL_FOO" }),
+    "/sap/bc/adt/oo/classes/zcl_foo/source/main"
+  );
+});
+
+test("objectUri still throws on a genuinely unknown base type", () => {
+  assert.throws(
+    () => objectUri({ type: "WAPA", name: "ZAPP" }),
+    /Unsupported object type: WAPA/
+  );
+});
+
 test("objectUri builds correct paths for common types", () => {
   assert.equal(
     objectUri({ type: "class", name: "ZCL_FOO" }),

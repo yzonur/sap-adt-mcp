@@ -286,13 +286,26 @@ export function register({ getClient }) {
         return textResult("adt_get_source: `type` is required (e.g. 'class', 'program', 'dataelement').", true);
       }
       const { client, name: sys } = getClient(args.system);
-      const t = normalizeType(args.type);
-      const path = sourceUri({
-        type: args.type,
-        name: args.object,
-        group: args.group,
-        include: args.include,
-      });
+      let t;
+      let path;
+      try {
+        t = normalizeType(args.type);
+        path = sourceUri({
+          type: args.type,
+          name: args.object,
+          group: args.group,
+          include: args.include,
+        });
+      } catch (err) {
+        // Unknown/unsupported object types (e.g. WAPA) reach the dispatch
+        // tables and throw. Return that as a clean tool error with an escape
+        // hatch hint instead of letting it surface as a crash.
+        return textResult(
+          `adt_get_source: ${err.message}. If this type has no high-level mapping yet, ` +
+            `fetch it with adt_request against its ADT source URI.`,
+          true
+        );
+      }
 
       // DDIC primitives (data element / domain / message class) have no
       // plain-text source — fetch their XML metadata with the right media type

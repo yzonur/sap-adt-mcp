@@ -1,7 +1,7 @@
 import { objectUri } from "../object-uris.js";
 import { parseDataPreview } from "../data-preview.js";
 import { parseObjectReferences } from "../object-references.js";
-import { errorResult, jsonResult } from "../result.js";
+import { errorResult, jsonResult, textResult } from "../result.js";
 import { SYSTEM_HINT } from "./_shared.js";
 
 const CDS_PREVIEW_PATH = "/sap/bc/adt/datapreview/cds";
@@ -86,12 +86,21 @@ export const tools = [
 export function register({ getClient }) {
   return {
     adt_cds_data_preview: async (args) => {
+      // `entity` is the documented field, but callers reach for `name`/`cdsName`;
+      // accept those too and fail cleanly rather than throwing on `.toUpperCase`.
+      const entity = args.entity ?? args.name ?? args.cdsName;
+      if (typeof entity !== "string" || entity.length === 0) {
+        return textResult(
+          "adt_cds_data_preview: `entity` is required (the CDS view/entity name, e.g. 'I_CompanyCode').",
+          true
+        );
+      }
       const { client, name: sys } = getClient(args.system);
       const max = Math.min(args.maxRows ?? DEFAULT_MAX_ROWS, HARD_CAP_ROWS);
       const res = await client.request({
         method: "POST",
         path: CDS_PREVIEW_PATH,
-        query: { ddlSourceName: args.entity.toUpperCase(), rowNumber: String(max) },
+        query: { ddlSourceName: entity.toUpperCase(), rowNumber: String(max) },
         accept: "application/xml",
       });
       const text = await res.text();
@@ -100,12 +109,12 @@ export function register({ getClient }) {
       try {
         parsed = parseDataPreview(text);
       } catch (err) {
-        return jsonResult({ system: sys, entity: args.entity, parseError: err.message, raw: text.slice(0, 8000) });
+        return jsonResult({ system: sys, entity, parseError: err.message, raw: text.slice(0, 8000) });
       }
       const rowCount = parsed.rows.length;
       return jsonResult({
         system: sys,
-        entity: args.entity.toUpperCase(),
+        entity: entity.toUpperCase(),
         rowCount,
         truncated: rowCount >= max,
         totalRows: parsed.totalRows,
@@ -116,8 +125,15 @@ export function register({ getClient }) {
     },
 
     adt_cds_dependencies: async (args) => {
+      const entity = args.entity ?? args.name ?? args.cdsName;
+      if (typeof entity !== "string" || entity.length === 0) {
+        return textResult(
+          "adt_cds_dependencies: `entity` is required (the CDS view/entity name, e.g. 'I_CompanyCode').",
+          true
+        );
+      }
       const { client, name: sys } = getClient(args.system);
-      const uri = objectUri({ type: "ddls", name: args.entity });
+      const uri = objectUri({ type: "ddls", name: entity });
       const res = await client.request({ path: GRAPHDATA_PATH, query: { uri }, accept: "application/xml" });
       const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"), { stage: "graphdata" });
@@ -131,7 +147,7 @@ export function register({ getClient }) {
       }
       return jsonResult({
         system: sys,
-        entity: args.entity.toUpperCase(),
+        entity: entity.toUpperCase(),
         uri,
         dependencyCount: refs.length,
         dependencies: refs,

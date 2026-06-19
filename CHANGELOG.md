@@ -6,6 +6,28 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.44]
+
+### Fixed
+
+- **`adt_get_source` crashed on TADIR `TYPE/SUBTYPE` object types (#21).**
+  `normalizeType` passed forms like `SRVD/SRV`, `CLAS/OC`, `DDLS/DF` through
+  unchanged, but the URI dispatch tables only matched the bare base (`SRVD`,
+  `CLAS`, …), so the lookup fell through and threw "Unsupported object type".
+  `objectUri`/`sourceUri` now collapse `X/Y` to its base type `X` (keeping the
+  function-group subtypes `FUGR/FF` and `FUGR/I` significant), so passing a full
+  TADIR type resolves correctly.
+- **Unsupported object types surfaced as crashes instead of clean errors (#33).**
+  Types with no high-level mapping (e.g. `WAPA`) threw out of `adt_get_source`
+  and were auto-reported as crashes. They now return a clean tool error with a
+  hint to use `adt_request`.
+- **`adt_cds_data_preview` and `adt_cds_dependencies` crashed when `entity` was
+  omitted (#30).** Both now validate `entity` up front (and accept `name` /
+  `cdsName` as aliases) instead of throwing on `.toUpperCase()` of `undefined`.
+- **`adt_list_packages` now accepts a bare `name` as a `root`/`package` alias
+  (#32),** so callers that reach for `name` get results instead of a crash on an
+  old build / a "root is required" miss.
+
 ## [0.8.43]
 
 ### Fixed

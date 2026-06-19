@@ -315,8 +315,9 @@ export function register({ getClient }) {
 
     adt_list_packages: async (args) => {
       // `package` is the field name on the sibling adt_browse_package tool, so
-      // callers reach for it here too — accept it as an alias for `root`.
-      const rootArg = args.root ?? args.package;
+      // callers reach for it here too — accept it (and a bare `name`) as an
+      // alias for `root`.
+      const rootArg = args.root ?? args.package ?? args.name;
       if (typeof rootArg !== "string" || rootArg.length === 0) {
         return textResult(
           "adt_list_packages: `root` is required (the root package to walk from, e.g. 'ZFLEET').",
