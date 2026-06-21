@@ -16,6 +16,7 @@ import { listPrompts, getPrompt } from "./prompts.js";
 import { textResult } from "./result.js";
 import { createReporter } from "./reporter.js";
 import { createAuditLog, toolContext } from "./audit.js";
+import { configurePanel, ensurePanelStarted } from "./panel.js";
 
 import * as connectionTools from "./tools/connection.js";
 import * as sourceTools from "./tools/source.js";
@@ -34,6 +35,7 @@ import * as worklistTools from "./tools/worklist.js";
 import * as jobTools from "./tools/jobs.js";
 import * as rapTools from "./tools/rap.js";
 import * as reportTools from "./tools/report.js";
+import * as panelTools from "./tools/panel.js";
 
 const PKG = JSON.parse(
   readFileSync(
@@ -123,6 +125,7 @@ const TOOL_MODULES = [
   jobTools,
   rapTools,
   reportTools,
+  panelTools,
 ];
 
 const tools = [];
@@ -235,6 +238,25 @@ async function validateConfig() {
     }
   }
   process.exit(allOk ? 0 : 1);
+}
+
+// --- Local control panel -----------------------------------------------------
+// Always WIRED so the adt_open_panel tool can start it on demand ("paneli aç"),
+// but it does not listen until either that tool is called or config.panel.enabled
+// auto-starts it at boot. Either way it serves a read-only HTML button panel from
+// inside this process — reachable only while this session keeps the MCP connected,
+// and it dies when the process exits.
+configurePanel({
+  tools,
+  handlers,
+  config,
+  version: PKG.version,
+  log: (msg) => process.stderr.write(`[${PKG.name}] panel: ${msg}\n`),
+});
+if (config.panel?.enabled) {
+  ensurePanelStarted().catch((err) =>
+    process.stderr.write(`[${PKG.name}] panel: ${err.message}\n`)
+  );
 }
 
 await server.connect(new StdioServerTransport());

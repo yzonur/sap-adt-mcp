@@ -6,6 +6,27 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.45]
+
+### Added
+
+- **Local read-only control panel.** The MCP process can serve a small HTML
+  button panel from `127.0.0.1`, reusing the exact same tool handlers. Because it
+  lives inside the MCP process, it is reachable only while a session keeps the MCP
+  connected and dies the moment that process exits — there is no standalone
+  server. Bound to loopback, gated by a per-boot random token, and limited to a
+  curated set of **read-only** tools only (search, grep, get_source, read_table,
+  ATC, where-used, packages, transports, dumps, inactive objects) — no write tool
+  is reachable from a button. Forms are rendered from each tool's live input
+  schema.
+- **`adt_open_panel` / `adt_close_panel` tools + `/panel` command.** Open the
+  panel on demand from a session ("paneli aç" → the agent calls `adt_open_panel`,
+  which starts the listener and opens the URL in the browser); `adt_close_panel`
+  stops it. No socket opens until that call. Auto-start at boot is still available
+  via `"panel": { "enabled": true }` / `SAP_ADT_MCP_PANEL=1`
+  (`SAP_ADT_MCP_PANEL_PORT` pins a port, otherwise a random free port). Tests in
+  `test/panel.test.js`.
+
 ## [0.8.44]
 
 ### Fixed

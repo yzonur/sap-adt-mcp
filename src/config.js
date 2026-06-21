@@ -51,8 +51,34 @@ export function loadConfig() {
     systems,
     reporting: parseReporting(raw.reporting),
     audit: parseAudit(raw.audit),
+    panel: parsePanel(raw.panel),
     configPath,
   };
+}
+
+// Local read-only HTTP control panel. OFF by default — it opens a listening
+// socket, which an stdio MCP otherwise never does. Enable via config or env.
+//   "panel": { "enabled": true, "port": 0 }   (port 0 = random free port)
+//   SAP_ADT_MCP_PANEL=1            (also accepts true/yes/on; 0/false/no/off forces off)
+//   SAP_ADT_MCP_PANEL_PORT=39555  (overrides config port)
+// The panel lives inside the MCP process: it is reachable only while this
+// Claude session keeps the MCP connected, and dies the moment the process exits.
+// It is bound to 127.0.0.1 and gated by a per-boot random token.
+function parsePanel(raw) {
+  const envVal = String(process.env.SAP_ADT_MCP_PANEL ?? "").toLowerCase();
+  const envOn = ["1", "true", "yes", "on"].includes(envVal);
+  const envOff = ["0", "false", "no", "off"].includes(envVal);
+  const r = raw && typeof raw === "object" ? raw : {};
+  const enabled = envOn ? true : envOff ? false : r.enabled === true;
+
+  const envPort = Number.parseInt(process.env.SAP_ADT_MCP_PANEL_PORT ?? "", 10);
+  const port = Number.isInteger(envPort)
+    ? envPort
+    : Number.isInteger(r.port)
+      ? r.port
+      : 0; // 0 → OS picks a free port
+
+  return { enabled, port, host: "127.0.0.1" };
 }
 
 // Local write-audit trail (JSONL). On by default; disable via config or env.

@@ -8,3 +8,5 @@ config.json
 
 # Offline ownership proof — holds the secret root key. NEVER commit.
 PROVENANCE.local.md
+
+.DS_Store

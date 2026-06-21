@@ -220,6 +220,43 @@ Turn it all off:
 | `reporting.includeArgs` | `true` | Include redacted tool args / repro args. Note: object names can appear here. |
 | `reporting.endpoint` | relay URL | Point at your own relay (see [`worker/`](worker/)). |
 
+### Local control panel
+
+A small HTML button panel for the **read-only** tools — search, grep, get_source,
+read_table, ATC, where-used, packages, transports, dumps, inactive objects — so
+you can poke at SAP from a browser without going through an agent.
+
+The trick: the panel is served **from inside the MCP process itself**, reusing
+the same tool handlers. So it is reachable **only while a session keeps the MCP
+connected** — close the session (or disconnect the MCP) and the process exits,
+taking the panel down with it. There is no standalone server to leave running.
+
+**Open it from a session (easiest).** Just ask the agent to open it — that calls
+the **`adt_open_panel`** tool, which starts the panel on demand and opens the URL
+in your browser. **`adt_close_panel`** stops it. In Claude Code the bundled
+**`/panel`** command does the same (`/panel`, `/panel url`, `/panel close`).
+Nothing listens until you ask — the socket opens only on that call.
+
+**Or auto-start at boot.** Set it in config or env and it comes up with the
+server:
+
+```json
+{ "panel": { "enabled": true, "port": 0 } }
+```
+
+…or `SAP_ADT_MCP_PANEL=1` (`SAP_ADT_MCP_PANEL_PORT` pins a port; `port: 0` / unset
+picks a random free one). On boot the server prints the URL, e.g.:
+
+```
+[sap-adt-mcp] panel: ready (read-only) → http://127.0.0.1:39555/?t=<token>
+```
+
+Safety: bound to `127.0.0.1` only, gated by a per-boot random **token** in that
+URL, and limited to a curated **read-only** allowlist — no write tool (set_source,
+activate, delete, lock, transport release) is reachable from a button, regardless
+of config. Each tool's form is rendered from its live input schema, and the
+system selector at the top targets any configured system.
+
 ## Connect a client
 
 ### Claude Code (CLI)
@@ -326,6 +363,13 @@ or rejecting credentials. Run this first when troubleshooting.
 | `adt_get_transport` | TR header + objects. | |
 | `adt_create_transport` | Create a new TR. | Refused under `readOnly: true`. Endpoint shape varies — see Caveats. |
 | `adt_release_transport` | Release a TR. | Refused under `readOnly: true`. |
+
+### Control panel
+
+| Tool | Purpose | Notes |
+| --- | --- | --- |
+| `adt_open_panel` | Start the local read-only HTML control panel and return its URL. | Opens the URL in the browser by default (`open: false` to just return it). Reachable only while this session keeps the MCP connected. See [Local control panel](#local-control-panel). |
+| `adt_close_panel` | Stop the panel. | It also stops on its own when the session ends. |
 
 ### Escape hatch
 

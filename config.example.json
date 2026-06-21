@@ -11,6 +11,10 @@
   "audit": {
     "enabled": true
   },
+  "panel": {
+    "enabled": false,
+    "port": 0
+  },
   "systems": {
     "DEV": {
       "host": "https://sap-dev.example.com:44300",
