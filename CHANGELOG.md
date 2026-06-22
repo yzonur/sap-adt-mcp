@@ -6,6 +6,25 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.46]
+
+### Changed
+
+- **Control panel — humanized output and forms.** The panel no longer dumps raw
+  JSON. Tool results are now rendered for a human: summary chips for scalar
+  fields, HTML tables for result lists (search hits, where-used references,
+  package contents, table rows, dumps, ATC findings), monospace code blocks for
+  source/XML, chapter sections for dump details, a priority histogram for ATC,
+  and a red error box (status + message) instead of an error blob. Every result
+  keeps a collapsible **"Ham JSON"** toggle so nothing is lost; plain-text replies
+  (e.g. ping) and unparseable bodies fall back to a code block.
+- **Control panel — friendlier inputs.** A panel-only field overlay re-presents
+  each tool's form for non-technical use without touching the agent-facing
+  schemas: Turkish labels, example placeholders, sensible defaults, and
+  **dropdowns** for value-constrained fields (object type, search type filter,
+  transport status, class include). Technical/rarely-used fields collapse under a
+  **"Gelişmiş ayarlar"** block; the global system selector still drives `system`.
+
 ## [0.8.45]
 
 ### Added

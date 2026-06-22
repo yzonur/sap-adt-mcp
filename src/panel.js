@@ -33,6 +33,181 @@ const PANEL_TOOLS = [
   { name: "adt_get_dump", label: "Dump Detayı", cat: "Runtime" },
 ];
 
+// --- Friendly form layer (panel-only) ---------------------------------------
+// The MCP inputSchemas are written for an agent: terse keys, ADT type codes,
+// regex. The panel re-presents them for a human. None of this touches the
+// agent-facing schemas — it's an overlay shipped in /meta and consumed by the
+// page. Per field: { label, help, advanced (collapse), default, placeholder,
+// options:[{value,label}] (renders a dropdown) }. Object-type dropdowns use the
+// tools' own friendly aliases (normalizeType accepts them), so they stay correct.
+const OBJECT_TYPE_OPTIONS = [
+  { value: "", label: "(seçiniz)" },
+  { value: "class", label: "Sınıf (CLAS)" },
+  { value: "program", label: "Program (PROG)" },
+  { value: "interface", label: "Arayüz (INTF)" },
+  { value: "function", label: "Fonksiyon modülü (FUGR/FF)" },
+  { value: "functiongroup", label: "Fonksiyon grubu (FUGR)" },
+  { value: "include", label: "Include (INCL)" },
+  { value: "table", label: "Tablo (TABL)" },
+  { value: "structure", label: "Yapı / Structure (TABL)" },
+  { value: "dataelement", label: "Veri elemanı (DTEL)" },
+  { value: "domain", label: "Domain (DOMA)" },
+  { value: "cds", label: "CDS View (DDLS)" },
+];
+
+// objectType filter on quick-search wants the ADT node-type code, not an alias.
+const SEARCH_TYPE_OPTIONS = [
+  { value: "", label: "Tümü" },
+  { value: "CLAS/OC", label: "Sınıf" },
+  { value: "PROG/P", label: "Program" },
+  { value: "INTF/OI", label: "Arayüz" },
+  { value: "FUGR/F", label: "Fonksiyon grubu" },
+  { value: "TABL/DT", label: "Tablo" },
+  { value: "DTEL/DE", label: "Veri elemanı" },
+  { value: "DOMA/DD", label: "Domain" },
+  { value: "DDLS/DF", label: "CDS View" },
+];
+
+const CLASS_INCLUDE_OPTIONS = [
+  { value: "", label: "main (varsayılan)" },
+  { value: "definitions", label: "definitions" },
+  { value: "implementations", label: "implementations" },
+  { value: "macros", label: "macros" },
+  { value: "testclasses", label: "testclasses" },
+];
+
+// intro: a friendly, non-technical one-liner per tool (replaces the agent-facing
+// description on the card). fields: per-field overlay.
+const TOOL_HINTS = {
+  adt_list_systems: { intro: "Tanımlı SAP sistemlerini ve varsayılanı gösterir." },
+  adt_ping: { intro: "Seçili sisteme bağlantıyı ve oturumu test eder." },
+  adt_search_objects: {
+    intro: "Repository'de isme göre obje arar. İsmin bir kısmını ve '*' joker karakterini kullanın.",
+    fields: {
+      query: { label: "Aranacak isim", placeholder: "örn: ZCL_MUSTERI*", help: "'*' joker karakter olarak kullanılabilir." },
+      objectType: { label: "Obje türü", options: SEARCH_TYPE_OPTIONS, help: "Belirli bir türle sınırla; boş = tümü." },
+      maxResults: { label: "Kaç sonuç", default: 50, advanced: true },
+    },
+  },
+  adt_grep_source: {
+    intro: "Kaynak kod İÇİNDE metin arar (isimde değil). Bir paket, transport ya da obje listesi seçin.",
+    fields: {
+      pattern: { label: "Aranan metin", placeholder: "örn: CALL FUNCTION", help: "Düz metin yazın; ileri düzey için regex (Gelişmiş)." },
+      package: { label: "Paket", placeholder: "örn: ZFLEET" },
+      transport: { label: "Transport", advanced: true, placeholder: "örn: E4DK900123" },
+      objects: { label: "Obje listesi (JSON)", advanced: true },
+      recursive: { label: "Alt paketlere de in", advanced: true },
+      flags: { label: "Regex flag'leri", advanced: true, help: "Boş = harf duyarsız ('i'). '' yazıp kapatamazsınız; teknik." },
+      prefix: { label: "Alt paket öneki", advanced: true },
+      maxPackages: { label: "Maks. paket", advanced: true },
+      maxObjects: { label: "Maks. obje", advanced: true },
+      maxMatches: { label: "Maks. eşleşme", advanced: true },
+    },
+  },
+  adt_browse_package: {
+    intro: "Bir paketin doğrudan içeriğini (tek seviye) listeler.",
+    fields: { package: { label: "Paket", placeholder: "örn: ZLOCAL" } },
+  },
+  adt_where_used: {
+    intro: "Bir objenin nerelerde kullanıldığını listeler.",
+    fields: {
+      object: { label: "Obje adı", placeholder: "örn: ZCL_MUSTERI" },
+      type: { label: "Obje türü", options: OBJECT_TYPE_OPTIONS },
+      group: { label: "Fonksiyon grubu", advanced: true, help: "Sadece FM/FUGR include için." },
+    },
+  },
+  adt_get_source: {
+    intro: "Bir objenin kaynak kodunu getirir.",
+    fields: {
+      object: { label: "Obje adı", placeholder: "örn: ZCL_MUSTERI" },
+      type: { label: "Obje türü", options: OBJECT_TYPE_OPTIONS },
+      include: { label: "Sınıf include'u", options: CLASS_INCLUDE_OPTIONS, advanced: true },
+      group: { label: "Fonksiyon grubu", advanced: true },
+      onlyMethod: { label: "Sadece bu metod", advanced: true, placeholder: "örn: CONSTRUCTOR" },
+      firstLine: { label: "İlk satır", advanced: true },
+      lastLine: { label: "Son satır", advanced: true },
+    },
+  },
+  adt_read_table: {
+    intro: "Veritabanına salt-okunur SELECT çalıştırır (sadece SELECT).",
+    fields: {
+      query: { label: "SELECT sorgusu", placeholder: "SELECT matnr, matkl FROM mara WHERE matnr LIKE 'M%'" },
+      maxRows: { label: "Maks. satır", default: 100, advanced: true },
+    },
+  },
+  adt_run_atc: {
+    intro: "Seçili objelerde ABAP Test Cockpit (ATC) kontrolü çalıştırır.",
+    fields: {
+      objects: { label: "Objeler (JSON liste)", placeholder: '[{"name":"ZCL_X","type":"class"}]', help: 'Her öğe { "name": "...", "type": "..." }.' },
+      checkVariant: { label: "Kontrol varyantı", advanced: true, help: "Boş = DEFAULT." },
+    },
+  },
+  adt_list_inactive_objects: {
+    intro: "Düzenlenmiş ama henüz aktive edilmemiş objeleri listeler.",
+  },
+  adt_list_transports: {
+    intro: "Görünür transport isteklerini listeler.",
+    fields: {
+      user: { label: "Kullanıcı (sahibi)", placeholder: "boş = bağlantı kullanıcısı" },
+      status: {
+        label: "Durum",
+        options: [
+          { value: "", label: "Değiştirilebilir (varsayılan)" },
+          { value: "modifiable", label: "Değiştirilebilir" },
+          { value: "released", label: "Serbest bırakılmış" },
+          { value: "all", label: "Tümü" },
+        ],
+      },
+      targets: { label: "Hedef sistemler", advanced: true },
+    },
+  },
+  adt_list_dumps: {
+    intro: "ST22 kısa dökümlerini (short dumps) listeler.",
+    fields: {
+      user: { label: "Kullanıcı", placeholder: "örn: OYILMAZ" },
+      from: { label: "Başlangıç tarihi", placeholder: "YYYYMMDD, örn: 20260513" },
+      to: { label: "Bitiş tarihi", placeholder: "YYYYMMDD", advanced: true },
+      host: { label: "Sunucu (host)", advanced: true },
+      maxResults: { label: "Kaç sonuç", default: 20, advanced: true },
+    },
+  },
+  adt_get_dump: {
+    intro: "Tek bir kısa dökümün detayını id ile getirir.",
+    fields: {
+      dumpId: { label: "Dump id", help: "adt_list_dumps çıktısındaki id." },
+      chapters: { label: "Bölümler (JSON liste)", advanced: true },
+      full: { label: "Ham metni de ekle", advanced: true, help: "Büyük (100KB+)." },
+    },
+  },
+};
+
+// Turkish column/field labels for the result tables. Unknowns are humanized.
+const COLUMN_LABELS = {
+  name: "İsim",
+  type: "Tür",
+  description: "Açıklama",
+  object: "Obje",
+  line: "Satır",
+  text: "Metin",
+  uri: "URI",
+  package: "Paket",
+  host: "Host",
+  user: "Kullanıcı",
+  client: "Mandant",
+  readOnly: "Salt-okunur",
+  isDefault: "Varsayılan",
+  priority: "Öncelik",
+  checkTitle: "Kontrol",
+  messageTitle: "Mesaj",
+  message: "Mesaj",
+  timestamp: "Zaman",
+  program: "Program",
+  runtimeError: "Hata",
+  id: "Id",
+  hits: "Eşleşme",
+  status: "Durum",
+};
+
 function timingSafeEqualStr(a, b) {
   const ba = Buffer.from(String(a));
   const bb = Buffer.from(String(b));
@@ -82,11 +257,14 @@ function buildView({ tools, handlers, config, version }) {
   for (const item of PANEL_TOOLS) {
     const def = tools.find((t) => t.name === item.name);
     if (!def || typeof handlers[item.name] !== "function") continue; // tool not present
+    const hint = TOOL_HINTS[item.name] ?? {};
     descriptors.push({
       name: def.name,
       label: item.label,
       cat: item.cat,
       description: def.description ?? "",
+      intro: hint.intro ?? null,
+      fields: hint.fields ?? {},
       schema: def.inputSchema ?? { type: "object", properties: {}, required: [] },
     });
   }
@@ -96,6 +274,7 @@ function buildView({ tools, handlers, config, version }) {
     defaultSystem: config.defaultSystem ?? null,
     readOnly: Boolean(config.readOnly),
     tools: descriptors,
+    columnLabels: COLUMN_LABELS,
   };
   return { allow, meta, html: renderHtml() };
 }
@@ -319,6 +498,40 @@ function renderHtml() {
   pre.out:empty { display:none; }
   .muted { color:#717a90; }
   #boot { padding:40px 20px; color:#8b93a7; }
+  /* friendly form */
+  .field .help { display:block; color:#717a90; font-size:10.5px; margin-top:3px; }
+  details.adv { margin:4px 0 8px; border-top:1px dashed #2a3142; padding-top:6px; }
+  details.adv > summary { cursor:pointer; color:#8b93a7; font-size:11px; list-style:none; user-select:none; }
+  details.adv > summary::before { content:"▸ "; }
+  details.adv[open] > summary::before { content:"▾ "; }
+  /* rendered results */
+  .res { margin-top:10px; }
+  .res:empty { display:none; }
+  .summary { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .chip { font-size:10.5px; padding:2px 8px; border-radius:999px; background:#1b2030; color:#aeb6c9; }
+  .chip b { color:#e6e8ee; font-weight:600; }
+  .chip.ok { background:#13361f; color:#5fd38a; }
+  .chip.bad { background:#3a1d1d; color:#f0a3a3; }
+  .errbox { background:#2a1414; border:1px solid #5a2a2a; border-radius:7px; padding:10px;
+    color:#f0a3a3; font-size:12px; }
+  .errbox .st { font-weight:600; color:#ffd0d0; }
+  .blk { margin:8px 0; }
+  .blk > .blktitle { font-size:11px; color:#9aa3b8; margin-bottom:4px; text-transform:uppercase; letter-spacing:.05em; }
+  table.grid { width:100%; border-collapse:collapse; font-size:11.5px; display:block; overflow:auto; max-height:360px; }
+  table.grid th, table.grid td { border:1px solid #232838; padding:4px 7px; text-align:left;
+    vertical-align:top; white-space:pre-wrap; word-break:break-word; max-width:340px; }
+  table.grid th { background:#171c28; color:#9aa3b8; position:sticky; top:0; font-weight:600; }
+  table.grid tr:nth-child(even) td { background:#10131b; }
+  .code { background:#0b0d13; border:1px solid #202635; border-radius:7px; padding:10px;
+    max-height:340px; overflow:auto; white-space:pre-wrap; word-break:break-word;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; color:#cdd3e0; }
+  .chapter { margin:8px 0; }
+  .chapter > .chtitle { font-size:11.5px; color:#cda; font-weight:600; margin-bottom:3px; }
+  details.raw { margin-top:10px; }
+  details.raw > summary { cursor:pointer; color:#717a90; font-size:11px; }
+  details.raw pre { margin:6px 0 0; background:#0b0d13; border:1px solid #202635; border-radius:7px;
+    padding:10px; max-height:300px; overflow:auto; white-space:pre-wrap; word-break:break-word;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:#8b93a7; }
 </style>
 </head>
 <body>
@@ -347,49 +560,64 @@ async function call(name, args){
   return r.json();
 }
 
-function fieldFor(key, prop, required){
-  const wrap = document.createElement("div"); wrap.className="field";
-  const lab = document.createElement("label");
-  lab.innerHTML = key + (required?' <span class="req">*</span>':'') ;
-  if(prop.description){ lab.title = prop.description; }
+let COLUMN_LABELS = {};
+const CODE_KEYS = new Set(["source","result","raw","rawtext","metadataxml","runresponse","resultxml"]);
+
+function humanize(k){
+  return String(k).replace(/([a-z0-9])([A-Z])/g,"$1 $2").replace(/[_-]+/g," ")
+    .replace(/^./,c=>c.toUpperCase());
+}
+function labelFor(k){ return COLUMN_LABELS[k] || humanize(k); }
+function el(tag, cls, txt){ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
+function short(v, n){ const s=String(v); return s.length>n ? s.slice(0,n)+"…" : s; }
+function isPlainObject(v){ return v && typeof v==="object" && !Array.isArray(v); }
+
+// ----- friendly form ---------------------------------------------------------
+function fieldFor(key, prop, required, hint){
+  hint=hint||{};
+  const wrap=el("div","field");
+  const lab=el("label",null,hint.label||key);
+  if(required){ const s=el("span","req"," *"); lab.appendChild(s); }
   wrap.appendChild(lab);
   let input;
-  const t = prop.type;
-  if(t==="boolean"){
-    input=document.createElement("input"); input.type="checkbox";
-    input.style.width="auto";
+  const t=prop.type;
+  const options = hint.options || (Array.isArray(prop.enum) ? prop.enum.map(v=>({value:v,label:v})) : null);
+  if(options){
+    input=document.createElement("select");
+    if(!hint.options){ const b=el("option",null,"(varsayılan)"); b.value=""; input.appendChild(b); }
+    for(const o of options){ const op=el("option",null,o.label); op.value=o.value; input.appendChild(op); }
+  } else if(t==="boolean"){
+    input=document.createElement("input"); input.type="checkbox"; input.style.width="auto";
   } else if(t==="integer"||t==="number"){
     input=document.createElement("input"); input.type="number";
     if(prop.minimum!=null) input.min=prop.minimum;
     if(prop.maximum!=null) input.max=prop.maximum;
   } else if(t==="array"||t==="object"){
     input=document.createElement("textarea");
-    input.placeholder="JSON, örn: "+(t==="array"?'[{"name":"...","type":"..."}]':'{}');
-  } else if(Array.isArray(prop.enum)){
-    input=document.createElement("select");
-    const blank=document.createElement("option"); blank.value=""; blank.textContent="(varsayılan)";
-    input.appendChild(blank);
-    for(const v of prop.enum){ const o=document.createElement("option"); o.value=v; o.textContent=v; input.appendChild(o); }
+    input.placeholder=hint.placeholder || ("JSON, örn: "+(t==="array"?'[{"name":"...","type":"..."}]':'{}'));
   } else {
     input=document.createElement("input"); input.type="text";
+    if(hint.placeholder) input.placeholder=hint.placeholder;
   }
   input.dataset.key=key; input.dataset.jtype=t||"string";
-  if(prop.description) input.title=prop.description;
+  if(hint.default!=null){ if(input.type==="checkbox") input.checked=!!hint.default; else input.value=String(hint.default); }
+  const tip=hint.help||prop.description; if(tip) input.title=tip;
   wrap.appendChild(input);
+  if(hint.help){ wrap.appendChild(el("span","help",hint.help)); }
   return wrap;
 }
 
 function collect(card){
   const args={};
-  for(const el of card.querySelectorAll("[data-key]")){
-    const k=el.dataset.key, t=el.dataset.jtype;
-    if(el.type==="checkbox"){ if(el.checked) args[k]=true; continue; }
-    const raw=el.value.trim();
+  for(const node of card.querySelectorAll("[data-key]")){
+    const k=node.dataset.key, t=node.dataset.jtype;
+    if(node.type==="checkbox"){ if(node.checked) args[k]=true; continue; }
+    const raw=node.value.trim();
     if(raw==="") continue;
     if(t==="integer"){ args[k]=parseInt(raw,10); }
     else if(t==="number"){ args[k]=Number(raw); }
     else if(t==="array"||t==="object"){
-      try { args[k]=JSON.parse(raw); } catch(e){ throw new Error(k+": geçersiz JSON"); }
+      try { args[k]=JSON.parse(raw); } catch(e){ throw new Error((k)+": geçersiz JSON"); }
     }
     else args[k]=raw;
   }
@@ -397,35 +625,165 @@ function collect(card){
 }
 
 function buildCard(tool, getSystem){
-  const card=document.createElement("section"); card.className="card";
-  const cat=document.createElement("div"); cat.className="cat"; cat.textContent=tool.cat; card.appendChild(cat);
-  const h=document.createElement("h3"); h.textContent=tool.label; card.appendChild(h);
-  const d=document.createElement("div"); d.className="desc"; d.textContent=tool.description; card.appendChild(d);
+  const card=el("section","card");
+  card.appendChild(el("div","cat",tool.cat));
+  card.appendChild(el("h3",null,tool.label));
+  card.appendChild(el("div","desc",tool.intro||tool.description));
 
   const props=tool.schema.properties||{};
   const req=new Set(tool.schema.required||[]);
+  const hints=tool.fields||{};
+  const adv=el("details","adv"); adv.appendChild(el("summary",null,"Gelişmiş ayarlar"));
+  let advCount=0;
   for(const key of Object.keys(props)){
-    if(key==="system") continue; // handled by the global system selector
-    card.appendChild(fieldFor(key, props[key], req.has(key)));
+    if(key==="system") continue; // global system selector handles it
+    const hint=hints[key]||{};
+    const f=fieldFor(key, props[key], req.has(key), hint);
+    if(hint.advanced){ adv.appendChild(f); advCount++; } else card.appendChild(f);
   }
-  const btn=document.createElement("button"); btn.className="run"; btn.textContent="Çalıştır"; card.appendChild(btn);
-  const out=document.createElement("pre"); out.className="out"; card.appendChild(out);
+  if(advCount>0) card.appendChild(adv);
+
+  const btn=el("button","run","Çalıştır"); card.appendChild(btn);
+  const out=el("div","res"); card.appendChild(out);
 
   btn.addEventListener("click", async ()=>{
     let args;
-    try { args=collect(card); } catch(e){ out.className="out err"; out.textContent=e.message; return; }
-    const sys=getSystem();
-    if(sys) args.system=sys;
+    try { args=collect(card); } catch(e){ showError(out, e.message); return; }
+    const sys=getSystem(); if(sys) args.system=sys;
     btn.disabled=true; const old=btn.textContent; btn.textContent="Çalışıyor…";
-    out.className="out"; out.textContent="";
+    out.textContent="";
     try {
       const res=await call(tool.name, args);
-      out.className="out"+(res.isError?" err":"");
-      out.textContent=res.text||"(boş yanıt)";
-    } catch(e){ out.className="out err"; out.textContent=String(e.message||e); }
+      renderResult(out, tool.name, res);
+    } catch(e){ showError(out, String(e.message||e)); }
     finally { btn.disabled=false; btn.textContent=old; }
   });
   return card;
+}
+
+// ----- result rendering ------------------------------------------------------
+function showError(out, msg){ out.innerHTML=""; const b=el("div","errbox"); b.appendChild(el("span","st","Hata")); b.appendChild(document.createTextNode(" — "+msg)); out.appendChild(b); }
+
+function renderResult(out, tool, res){
+  out.innerHTML="";
+  const raw=(res&&res.text)||"";
+  let data;
+  try { data=JSON.parse(raw); }
+  catch(e){ out.appendChild(el("div","code",raw||"(boş yanıt)")); return; }
+
+  if((res&&res.isError) || (isPlainObject(data)&&data.ok===false)){
+    renderErrorObject(out, data);
+    appendRaw(out, data);
+    return;
+  }
+  if(!isPlainObject(data)){ out.appendChild(el("div","code",raw)); return; }
+  renderObject(out, data);
+  appendRaw(out, data);
+}
+
+function renderErrorObject(out, data){
+  const b=el("div","errbox");
+  const err=data.error||{};
+  const msg = err.message || err.localizedMessage || (typeof err==="string"?err:null)
+    || err.raw || data.parseError || "İstek başarısız.";
+  const st = data.status!=null ? ("HTTP "+data.status) : "Hata";
+  b.appendChild(el("span","st",st));
+  b.appendChild(document.createTextNode(" — "+short(msg, 1200)));
+  out.appendChild(b);
+}
+
+function renderObject(out, data){
+  const scalars=[], tables=[], scalarArrays=[], maps=[], codes=[];
+  for(const [k,v] of Object.entries(data)){
+    if(v==null) continue;
+    const lk=k.toLowerCase();
+    if(CODE_KEYS.has(lk) || (typeof v==="string" && (v.indexOf("\n")>=0 || v.length>160))){ codes.push([k,v]); }
+    else if(Array.isArray(v)){
+      if(v.length && isPlainObject(v[0])) tables.push([k,v]);
+      else if(v.length) scalarArrays.push([k,v]);
+    }
+    else if(isPlainObject(v)) maps.push([k,v]);
+    else scalars.push([k,v]); // string/number/boolean
+  }
+
+  if(scalars.length){
+    const s=el("div","summary");
+    for(const [k,v] of scalars){
+      const c=el("span","chip"+(typeof v==="boolean"?(v?" ok":" bad"):""));
+      const b=el("b",null,labelFor(k)+": ");
+      c.appendChild(b);
+      c.appendChild(document.createTextNode(typeof v==="boolean"?(v?"evet":"hayır"):short(v,80)));
+      s.appendChild(c);
+    }
+    out.appendChild(s);
+  }
+
+  for(const [k,arr] of tables){ out.appendChild(blockTitle(labelFor(k)+" ("+arr.length+")")); out.appendChild(makeTable(arr)); }
+
+  for(const [k,arr] of scalarArrays){
+    const blk=el("div","blk"); blk.appendChild(el("div","blktitle",labelFor(k)+" ("+arr.length+")"));
+    blk.appendChild(el("div","code", arr.map(x=>String(x)).join(", "))); out.appendChild(blk);
+  }
+
+  for(const [k,obj] of maps){
+    const vals=Object.values(obj);
+    if(vals.length && vals.every(x=>typeof x==="string")){
+      // chapter-style sections (e.g. dump chapters)
+      const blk=el("div","blk"); blk.appendChild(el("div","blktitle",labelFor(k)));
+      for(const [sk,sv] of Object.entries(obj)){
+        const ch=el("div","chapter"); ch.appendChild(el("div","chtitle",labelFor(sk)));
+        ch.appendChild(el("div","code",short(sv,8000))); blk.appendChild(ch);
+      }
+      out.appendChild(blk);
+    } else if(vals.length && vals.every(x=>typeof x==="number")){
+      // histogram (e.g. byPriority)
+      const blk=el("div","blk"); blk.appendChild(el("div","blktitle",labelFor(k)));
+      const s=el("div","summary");
+      for(const [sk,sv] of Object.entries(obj)){ const c=el("span","chip"); c.appendChild(el("b",null,labelFor(sk)+": ")); c.appendChild(document.createTextNode(String(sv))); s.appendChild(c); }
+      blk.appendChild(s); out.appendChild(blk);
+    } else {
+      const d=el("details","raw"); d.appendChild(el("summary",null,labelFor(k)));
+      d.appendChild(el("pre",null,JSON.stringify(obj,null,2))); out.appendChild(d);
+    }
+  }
+
+  for(const [k,v] of codes){
+    const blk=el("div","blk"); blk.appendChild(el("div","blktitle",labelFor(k)));
+    blk.appendChild(el("div","code",short(v,20000))); out.appendChild(blk);
+  }
+
+  if(!scalars.length && !tables.length && !scalarArrays.length && !maps.length && !codes.length){
+    out.appendChild(el("div","code","(boş yanıt)"));
+  }
+}
+
+function blockTitle(t){ return el("div","blktitle",t); }
+
+function makeTable(rows){
+  const cols=[]; const seen=new Set();
+  for(const r of rows){ for(const k of Object.keys(r)){ if(!seen.has(k)){ seen.add(k); cols.push(k); } } }
+  const table=el("table","grid");
+  const thead=document.createElement("thead"); const htr=document.createElement("tr");
+  for(const c of cols) htr.appendChild(el("th",null,labelFor(c)));
+  thead.appendChild(htr); table.appendChild(thead);
+  const tbody=document.createElement("tbody");
+  for(const r of rows){
+    const tr=document.createElement("tr");
+    for(const c of cols){
+      const v=r[c];
+      const cell = v==null ? "" : (typeof v==="object" ? JSON.stringify(v) : String(v));
+      tr.appendChild(el("td",null,short(cell,300)));
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
+function appendRaw(out, data){
+  const d=el("details","raw"); d.appendChild(el("summary",null,"Ham JSON"));
+  d.appendChild(el("pre",null,JSON.stringify(data,null,2)));
+  out.appendChild(d);
 }
 
 (async function init(){
@@ -438,10 +796,11 @@ function buildCard(tool, getSystem){
     $("#boot").textContent="Panel'e bağlanılamadı: "+e.message+" — token geçersiz ya da session kapandı.";
     return;
   }
+  COLUMN_LABELS = meta.columnLabels || {};
   $("#ver").textContent="v"+meta.version;
   if(meta.readOnly) $("#globalro").style.display="";
   const sel=$("#system");
-  for(const s of meta.systems){ const o=document.createElement("option"); o.value=s; o.textContent=s; sel.appendChild(o); }
+  for(const s of meta.systems){ const o=el("option",null,s); o.value=s; sel.appendChild(o); }
   if(meta.defaultSystem) sel.value=meta.defaultSystem;
   const getSystem=()=>sel.value||"";
 
