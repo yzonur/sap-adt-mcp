@@ -6,6 +6,17 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.47]
+
+### Fixed
+
+- **Control panel stuck on "Yükleniyor…".** The 0.8.46 page script contained
+  `v.indexOf("\n")` inside the served-HTML template literal, so the `\n` resolved
+  to a real newline at serve time and produced an unterminated string literal in
+  the browser — the inline script failed to parse and the panel never rendered.
+  Escaped it (`\\n`) so the browser receives a valid newline escape. Verified by
+  syntax-checking the actually-served script, not just the source.
+
 ## [0.8.46]
 
 ### Changed

@@ -697,7 +697,7 @@ function renderObject(out, data){
   for(const [k,v] of Object.entries(data)){
     if(v==null) continue;
     const lk=k.toLowerCase();
-    if(CODE_KEYS.has(lk) || (typeof v==="string" && (v.indexOf("\n")>=0 || v.length>160))){ codes.push([k,v]); }
+    if(CODE_KEYS.has(lk) || (typeof v==="string" && (v.indexOf("\\n")>=0 || v.length>160))){ codes.push([k,v]); }
     else if(Array.isArray(v)){
       if(v.length && isPlainObject(v[0])) tables.push([k,v]);
       else if(v.length) scalarArrays.push([k,v]);
