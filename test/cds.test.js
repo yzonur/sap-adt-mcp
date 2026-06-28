@@ -87,6 +87,12 @@ test("adt_cds_data_preview: builds ddlSourceName + rowNumber, parses columns/row
   assert.equal(out.columns.length, 2);
   assert.equal(out.rowCount, 2);
   assert.equal(out.rows[0].WAERS, "EUR");
+  // Regression (#53/#36): must request the table media type, not plain xml,
+  // or the Data Preview endpoint 406s (ExceptionResourceNotAcceptable).
+  assert.equal(
+    calls[0].accept,
+    "application/vnd.sap.adt.datapreview.table.v1+xml"
+  );
 });
 
 test("adt_cds_data_preview: non-ok response → error result", async () => {

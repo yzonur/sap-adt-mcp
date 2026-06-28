@@ -1,8 +1,32 @@
 import { objectUri, sourceUri, normalizeType } from "../object-uris.js";
 import { escapeXml } from "../xml.js";
 import { parseObjectReferences } from "../object-references.js";
-import { errorResult, jsonResult } from "../result.js";
+import { errorResult, jsonResult, textResult } from "../result.js";
 import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
+
+// Guard the `objects` array before the handlers iterate it. Callers frequently
+// reach for the singular `object`/`type` shape (as adt_get_source uses), which
+// left `args.objects` undefined and crashed on `.map`. Return a clean tool
+// error pointing at the right shape instead of throwing.
+function validateObjects(tool, objects) {
+  if (!Array.isArray(objects) || objects.length === 0) {
+    return textResult(
+      `${tool}: \`objects\` is required — a non-empty array of { name, type[, group] }. ` +
+        "Note the plural: pass `objects: [{ name: '…', type: '…' }]`, not a singular `object`/`type`.",
+      true
+    );
+  }
+  for (let i = 0; i < objects.length; i++) {
+    const o = objects[i];
+    if (!o || typeof o.name !== "string" || typeof o.type !== "string") {
+      return textResult(
+        `${tool}: objects[${i}] must be { name: string, type: string }.`,
+        true
+      );
+    }
+  }
+  return null;
+}
 
 // Parse <atcfinding .../> elements from an ATC worklist result. Attribute names
 // vary slightly across releases — collect them all, normalized without prefix.
@@ -343,6 +367,8 @@ export function register({ getClient }) {
     },
 
     adt_run_unit_tests: async (args) => {
+      const objectsError = validateObjects("adt_run_unit_tests", args.objects);
+      if (objectsError) return objectsError;
       const { client, name: sys } = getClient(args.system);
       const refs = args.objects
         .map((o) => {
@@ -369,6 +395,8 @@ export function register({ getClient }) {
     },
 
     adt_run_atc: async (args) => {
+      const objectsError = validateObjects("adt_run_atc", args.objects);
+      if (objectsError) return objectsError;
       const { client, name: sys } = getClient(args.system);
       const refs = args.objects
         .map((o) => {

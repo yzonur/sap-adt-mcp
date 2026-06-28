@@ -126,3 +126,22 @@ test("adt_run_atc_transport: empty transport → no run, friendly note", async (
   assert.match(out.note, /nothing to check/i);
   assert.equal(calls.length, 1); // only the transport fetch
 });
+
+test("adt_run_atc: missing objects array → clean error, no crash (#40)", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = register(ctx);
+  // Caller used the singular get_source shape; objects is undefined.
+  const r = await h.adt_run_atc({ object: "ZCDS_X", type: "cds", firstLine: 1 });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /objects.*required/i);
+  assert.equal(calls.length, 0); // never reached the wire
+});
+
+test("adt_run_unit_tests: missing objects array → clean error (#40)", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = register(ctx);
+  const r = await h.adt_run_unit_tests({ object: "ZCL_X", type: "class" });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /objects.*required/i);
+  assert.equal(calls.length, 0);
+});

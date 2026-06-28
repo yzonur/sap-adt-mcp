@@ -101,7 +101,10 @@ export function register({ getClient }) {
         method: "POST",
         path: CDS_PREVIEW_PATH,
         query: { ddlSourceName: entity.toUpperCase(), rowNumber: String(max) },
-        accept: "application/xml",
+        // The Data Preview endpoint only serializes a result set as this media
+        // type; plain application/xml 406s (ExceptionResourceNotAcceptable),
+        // same as the adt_read_table fix.
+        accept: "application/vnd.sap.adt.datapreview.table.v1+xml",
       });
       const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));

@@ -6,6 +6,27 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.48]
+
+### Fixed
+
+- **`adt_cds_data_preview` 406 ExceptionResourceNotAcceptable (#53, #36).** The
+  CDS Data Preview POST sent `Accept: application/xml`, but the endpoint only
+  serializes a result set as `application/vnd.sap.adt.datapreview.table.v1+xml`
+  (the same media type the `adt_read_table` fix uses). Every row-returning CDS
+  preview 406'd; now fixed.
+- **`adt_run_atc` / `adt_run_unit_tests` crashed on the singular `object` shape
+  (#40).** Callers reaching for `{ object, type }` (as `adt_get_source` uses)
+  left `args.objects` undefined and threw `TypeError: Cannot read properties of
+  undefined (reading 'map')`. Both now validate `objects` up front and return a
+  clean tool error pointing at the plural `objects: [{ name, type }]` shape.
+- **Misconfigured `host` now fails loudly at config load (root cause of #41–48).**
+  A host without an `http(s)://` scheme (or an otherwise unparseable one) used to
+  throw the cryptic "ADT path is not a valid URL component" on every single tool
+  call. `loadConfig` now validates the scheme up front with an actionable message
+  naming the system. Config paths are also resolved at call time so
+  `SAP_ADT_MCP_CONFIG` is always honoured.
+
 ## [0.8.47]
 
 ### Fixed

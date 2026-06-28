@@ -2,14 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const CANDIDATE_PATHS = [
-  process.env.SAP_ADT_MCP_CONFIG,
-  path.join(os.homedir(), ".sap-adt-mcp", "config.json"),
-  path.join(process.cwd(), "config.json"),
-].filter(Boolean);
+// Resolved at call time (not import time) so SAP_ADT_MCP_CONFIG is honoured
+// whenever loadConfig runs, not just whatever it was when this module loaded.
+function candidatePaths() {
+  return [
+    process.env.SAP_ADT_MCP_CONFIG,
+    path.join(os.homedir(), ".sap-adt-mcp", "config.json"),
+    path.join(process.cwd(), "config.json"),
+  ].filter(Boolean);
+}
 
 export function loadConfig() {
-  const configPath = CANDIDATE_PATHS.find((p) => fs.existsSync(p));
+  const configPath = candidatePaths().find((p) => fs.existsSync(p));
   if (!configPath) {
     throw new Error(
       "No config found. Set SAP_ADT_MCP_CONFIG or create ~/.sap-adt-mcp/config.json " +
@@ -31,7 +35,7 @@ export function loadConfig() {
   const systems = {};
   for (const [name, profile] of Object.entries(raw.systems ?? {})) {
     systems[name] = {
-      host: requireString(profile.host, `${name}.host`),
+      host: requireHost(profile.host, name),
       client: profile.client != null ? String(profile.client) : undefined,
       language: profile.language != null ? String(profile.language) : undefined,
       user: requireString(profile.user, `${name}.user`),
@@ -120,6 +124,29 @@ function requireString(value, key) {
     throw new Error(`Config: ${key} must be a non-empty string`);
   }
   return value;
+}
+
+// A host without an http(s):// scheme (or an otherwise unparseable one) makes
+// every request throw the cryptic "ADT path is not a valid URL component" at
+// call time — once per tool call, far from the real cause. Validate the scheme
+// up front so a bad config fails loudly at load with an actionable message.
+function requireHost(value, systemName) {
+  const host = requireString(value, `${systemName}.host`);
+  let url;
+  try {
+    url = new URL(host);
+  } catch {
+    throw new Error(
+      `Config: ${systemName}.host must be a full URL including scheme, ` +
+        `e.g. "https://sap.example.com:44300" (got "${host}").`
+    );
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(
+      `Config: ${systemName}.host must use http:// or https:// (got "${url.protocol}//" in "${host}").`
+    );
+  }
+  return host;
 }
 
 function resolveSecret(value, systemName) {
