@@ -6,6 +6,24 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.49]
+
+### Changed
+
+- **Stop auto-reporting environmental / system-side conditions as bugs.** Two
+  recurring auto-reports were not tool defects, so the crash reporter no longer
+  files them:
+  - `Failed to fetch CSRF token` (crash channel) — the host answered with an
+    HTML page (SSO/login, web dispatcher, or a wrong host/system), never a
+    mis-shaped request on our side (#62; same class as the deleted #58–60).
+  - `NoDependencyGraphDataCalculationPossible` from `adt_cds_dependencies`
+    (adt-error channel) — SAP can't compute the dependency graph for that CDS
+    entity, a system/data-side condition (#61; previously triaged in #22).
+- **Clearer CSRF-fetch error.** When the CSRF probe gets an HTML body, the error
+  now says the host returned an HTML page (likely an SSO/login page or wrong
+  host) and to check the system's host and basic-auth ADT access — instead of
+  dumping raw HTML.
+
 ## [0.8.48]
 
 ### Fixed

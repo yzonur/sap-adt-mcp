@@ -32,7 +32,11 @@ const SKIP_NAMES = new Set(["ReadOnlyViolationError", "AbortError"]);
 // Configuration / setup mistakes and input-validation errors — the user's
 // environment or a mis-shaped tool call, not a bug in the tool.
 const SKIP_MESSAGE_RE =
-  /(No config found|must be a non-empty string|env var .* is not set|No system specified|Unknown system '|No systems configured|password must be a string|Failed to parse config|is required\b|Unsupported object type|ADT request failed|ADT request timed out|fetch failed)/i;
+  // "Failed to fetch CSRF token": the host didn't behave like an ADT endpoint
+  // (SSO/login page, web dispatcher, wrong host/system) — environmental/auth, not
+  // a tool defect. The CSRF fetch is a fixed simple GET, so it never mis-shapes a
+  // request on our side (#62, and the deleted #58-60 cluster).
+  /(No config found|must be a non-empty string|env var .* is not set|No system specified|Unknown system '|No systems configured|password must be a string|Failed to parse config|is required\b|Unsupported object type|ADT request failed|ADT request timed out|fetch failed|Failed to fetch CSRF token)/i;
 
 // Network / TLS problems live on the user's side (firewall, VPN, cert, host down).
 const NETWORK_CODES = new Set([
@@ -177,7 +181,9 @@ const BUSINESS_T100 = new Set([
   "ADT_DATAPREVIEW_MSG",
 ]);
 const BUSINESS_TYPE_RE =
-  /SaveFailure|Lock|Enqueue|CTS_|ExceptionResourceAlreadyExists|NotFound/i;
+  // NoDependencyGraphDataCalculationPossible: SAP can't compute the dependency
+  // graph for a given CDS entity (system/data-side, not a tool defect — see #22/#61).
+  /SaveFailure|Lock|Enqueue|CTS_|ExceptionResourceAlreadyExists|NotFound|NoDependencyGraphDataCalculation/i;
 
 // Decide whether a non-2xx ADT response that a handler returned (not threw) is
 // likely a defect in *this* tool rather than a user/business condition. Errs

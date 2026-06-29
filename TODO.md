@@ -55,6 +55,43 @@ for the per-tool live-verified vs best-effort breakdown._
 - [ ] `adt_transport_queue` — STMS import buffer status. "Where is TR X right now — DEV, in QAS buffer, imported into PRD?"
 - [ ] `adt_compare_ddic` — DDIC metadata diff (fields, indexes, foreign keys, technical settings). Today only source can be compared cross-system; for tables that's not enough.
 
+### Cloud connectivity — S/4HANA Public Cloud / BTP (SAML / OAuth)
+
+Need: the MCP only speaks Basic auth, so it can't reach SSO/SAML-protected
+S/4HANA Cloud Public Edition (and BTP ABAP env) systems. A developer contributed
+a working reference (browser-SSO cookie capture). **Status: under evaluation,
+not started — discuss before building.**
+
+Auth-method analysis (no single method is universal):
+
+- **OAuth bearer / service key** — cleanest & headless, but needs the tenant to
+  expose an OAuth client / service key (admin-provisioned; common on BTP ABAP
+  env / Steampunk, often not self-service for S/4HC Public ADT).
+- **Communication user (Basic)** — does *not* cover the ADT developer surface
+  (comm scenarios are for specific OData/SOAP APIs), so not usable for our case.
+- **Browser SSO cookie capture** — the only method that works for *any* user who
+  can log in interactively, with zero backend setup. Downsides: heavy browser
+  dep (Playwright/Puppeteer, hundreds of MB), short session life (frequent
+  re-login), live session cookies on disk (bearer credential), capture fragility.
+
+Proposed shape (decided direction, not yet built):
+- [ ] Shared cloud auth layer: in SAML/cloud mode skip `Authorization` + `sap-client`
+  header, send `x-sap-adt-sessiontype: stateful`; CSRF from
+  `/sap/bc/adt/compatibility/graph` (not `/discovery`); force-refresh CSRF on 403.
+- [ ] Credential source A — **Bearer token** (service key / OAuth): tiny change,
+  headless, refreshable. For tenants that expose it.
+- [ ] Credential source C — **captured cookie file** consumption in the lean core
+  (load JSON → cookie map; our name-keyed Map already avoids the Python
+  `CookieConflictError`). Universal fallback.
+- [ ] Browser capture (Phase 1) kept **optional / separate helper**, never a core
+  dependency, so non-cloud installs stay lean.
+- [ ] Security: cookie/token file is a bearer credential — gitignore, restricted
+  perms, redact from crash reporter; also stop the DEBUG trace from printing the
+  `Cookie` header (currently only `Authorization` is skipped).
+- [ ] Note for users: cloud development is ABAP Cloud / Clean Core (restricted
+  language, released APIs only, customer namespace) — the connection works like
+  on-prem but the platform itself limits what can be done.
+
 ### Structural improvements
 
 - [ ] MCP `resources` registration — expose the system list, open TRs, recent dumps as live resources so an agent can see them without burning a tool call.

@@ -302,6 +302,37 @@ test("shouldReport skips input-validation errors (mis-shaped tool calls)", () =>
   assert.equal(shouldReport(new TypeError("Cannot read properties of undefined (reading 'foo')")), true);
 });
 
+test("shouldReport skips CSRF-token fetch failures (environmental/SSO) (#62)", () => {
+  const { shouldReport } = _internals;
+  assert.equal(
+    shouldReport(new Error('Failed to fetch CSRF token (status 200): <!DOCTYPE html>')),
+    false
+  );
+  assert.equal(
+    shouldReport(new Error("Failed to fetch CSRF token (status 404): <html>...")),
+    false
+  );
+});
+
+test("shouldReportAdt skips NoDependencyGraphDataCalculationPossible (#61/#22)", () => {
+  const { shouldReportAdt } = _internals;
+  // SAP can't compute the dependency graph for this CDS — system-side, expected.
+  assert.equal(
+    shouldReportAdt({
+      tool: "adt_cds_dependencies",
+      status: 500,
+      type: "NoDependencyGraphDataCalculationPossible",
+      t100: { id: "DDIC_ADT_DDLS", number: "404" },
+    }),
+    false
+  );
+  // A different genuine 500 from a tool we shaped is still reported.
+  assert.equal(
+    shouldReportAdt({ tool: "adt_activate", status: 500, type: "InternalError" }),
+    true
+  );
+});
+
 test("reportAdtError never fires for the adt_request escape hatch", async () => {
   await withCapturedFetchFull(async (calls) => {
     const reporter = createReporter(baseConfig(), PKG);

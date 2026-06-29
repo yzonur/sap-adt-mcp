@@ -168,8 +168,15 @@ export class AdtClient {
     const token = res.headers.get("x-csrf-token");
     if (!token || token.toLowerCase() === "required") {
       const body = await res.text().catch(() => "");
+      // An HTML body means the host answered with a web page (SSO/login form or a
+      // web-dispatcher error), not the ADT service — usually a wrong host/system
+      // or a system fronted by SSO that basic auth can't pass.
+      const looksHtml = /^\s*<(!doctype html|html\b)/i.test(body);
+      const hint = looksHtml
+        ? " — the host returned an HTML page (likely an SSO/login page or wrong host), not the ADT service. Check the system's host and that it accepts basic-auth ADT access."
+        : "";
       throw new Error(
-        `Failed to fetch CSRF token (status ${res.status}): ${body.slice(0, 200)}`
+        `Failed to fetch CSRF token (status ${res.status})${hint}: ${body.slice(0, 200)}`
       );
     }
     this.csrfToken = token;
