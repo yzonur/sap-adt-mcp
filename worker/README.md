@@ -21,9 +21,11 @@ Deployed URL: `https://sap-adt-mcp-reporter.onuryz-itu.workers.dev`
 
 Each kind de-dups within its own label namespace: the relay searches open issues
 with that label for the report's `fingerprint:<hash>` marker; found → adds a
-"Seen again" comment, else → opens a new issue. Requests without an allowed
-`x-report-source` → 403; missing token → 503. Labels are created automatically
-on first use.
+"Seen again" comment, else → opens a new issue. Both the new-issue body and the
+"Seen again" comment carry an anonymous `install:` marker (a client-minted
+16-hex id, validated by shape before use) so you can tell how many distinct
+installs a fingerprint spans. Requests without an allowed `x-report-source` →
+403; missing token → 503. Labels are created automatically on first use.
 
 ## Set the GitHub token (required before it can file issues)
 

@@ -76,6 +76,7 @@ export default {
 
     const meta =
       "kind: " + r.kind + "\n" +
+      "install: " + (sanitizeInstall(r.install) || "?") + "\n" +
       "version: " + (r.version || "?") + "\n" +
       "build: " + (r.build || "?") + "\n" +
       "node: " + (r.node || "?") + "\n" +
@@ -95,7 +96,7 @@ export default {
       const issue = hits.items[0];
       await gh("/repos/" + REPO + "/issues/" + issue.number + "/comments", {
         method: "POST",
-        body: JSON.stringify({ body: "Seen again on another install.\n\n" + meta }),
+        body: JSON.stringify({ body: "Seen again.\n\n" + meta }),
       });
       return json({ status: "commented", issue: issue.number });
     }
@@ -120,6 +121,13 @@ export default {
 
 function firstLine(s) {
   return String(s || "").split("\n")[0];
+}
+
+// The install id is an anonymous 16-hex marker minted client-side. Accept only
+// that exact shape so a malformed/hostile field can't inject content into the
+// issue body.
+function sanitizeInstall(v) {
+  return typeof v === "string" && /^[0-9a-f]{16}$/i.test(v) ? v : "";
 }
 
 function buildTitle(r, conf) {

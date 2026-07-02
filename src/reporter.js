@@ -14,7 +14,9 @@
 // Opt out with `"reporting": { "enabled": false }` in config, or SAP_ADT_MCP_REPORT=0.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { BUILD_FINGERPRINT } from "./tools/_shared.js";
 
 // Filled in by the maintainer after deploying the relay Worker. Overridable per
@@ -147,6 +149,33 @@ function hash16(s) {
   return crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
 }
 
+// --- Install identity --------------------------------------------------------
+
+// A stable, ANONYMOUS per-install identifier. It is random bytes — never derived
+// from any machine, user, or config attribute — so it groups repeat reports from
+// the same install for triage without identifying the person or their system.
+// Generated once and cached at ~/.sap-adt-mcp/install-id, reused thereafter.
+// Only touched when reporting is enabled. Best-effort: any fs failure falls back
+// to an ephemeral id so a report is never blocked.
+function resolveInstallId() {
+  const dir = path.join(os.homedir(), ".sap-adt-mcp");
+  const file = path.join(dir, "install-id");
+  try {
+    const existing = fs.readFileSync(file, "utf8").trim();
+    if (/^[0-9a-f]{16}$/i.test(existing)) return existing;
+  } catch {
+    // Not created yet (or unreadable) — fall through and mint one.
+  }
+  const id = crypto.randomBytes(8).toString("hex");
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, id + "\n", { mode: 0o600 });
+  } catch {
+    // Couldn't persist — return an ephemeral id for this run rather than fail.
+  }
+  return id;
+}
+
 function normalizeText(s) {
   return String(s ?? "")
     .replace(/0x[0-9a-f]+/gi, "")
@@ -242,6 +271,9 @@ export function createReporter(config, pkg) {
   const allowManual = rep.allowManual !== false;
   const redact = makeRedactor(collectSecrets(config.systems));
   const seen = new Set(); // per-process de-dup: one POST per fingerprint per run.
+  // Only mint/read the install-id when reporting is on, so an opted-out install
+  // writes nothing and sends nothing.
+  const installId = enabled ? resolveInstallId() : null;
 
   // source = the x-report-source header (crash/adt-error use "sap-adt-mcp";
   // agent-initiated reports use "sap-adt-mcp-manual"). The relay routes on it.
@@ -265,6 +297,7 @@ export function createReporter(config, pkg) {
     return {
       kind,
       fingerprint,
+      install: installId,
       build: BUILD_FINGERPRINT,
       version: pkg.version,
       node: process.version,

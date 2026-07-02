@@ -42,7 +42,7 @@ export const tools = [
   {
     name: "adt_create_transport",
     description:
-      "Create a new transport request. Returns the new TR number. Subject to read-only mode.",
+      "Create a new transport request. Returns the new TR number. Subject to read-only mode. Note: on some systems TR *creation* routes through a SAP GUI dialog and fails headless with a 500 (SAPLSTRD/SAPLSPO4 'No window system type'). Assigning changes to an EXISTING request works headless — pass that TR id as `transport` to adt_lock / adt_set_source instead.",
     inputSchema: {
       type: "object",
       properties: {
@@ -118,10 +118,18 @@ export function register({ getClient }) {
     adt_create_transport: async (args) => {
       const { client, name: sys, profile } = getClient(args.system);
       const trType = args.type ?? "K";
+      // Only emit tm:target when a real target is given. Sending tm:target=""
+      // (the old default) makes some systems reject the create with an opaque
+      // 500 — the same blank-value hazard as a whitespace corrNr (#68/#63).
+      // Omitting it lets CTS apply the connection's default consolidation route.
+      const targetAttr =
+        typeof args.target === "string" && args.target.trim()
+          ? ` tm:target="${escapeXml(args.target.trim())}"`
+          : "";
       const xml =
         `<?xml version="1.0" encoding="UTF-8"?>` +
         `<tm:root xmlns:tm="http://www.sap.com/cts/adt/tm" tm:useraction="newrequest">` +
-        `<tm:request tm:desc="${escapeXml(args.description)}" tm:type="${trType}" tm:target="${escapeXml(args.target ?? "")}" tm:cliDep="X">` +
+        `<tm:request tm:desc="${escapeXml(args.description)}" tm:type="${trType}"${targetAttr} tm:cliDep="X">` +
         `<tm:user tm:name="${escapeXml(profile.user.toUpperCase())}"/>` +
         `</tm:request>` +
         `</tm:root>`;

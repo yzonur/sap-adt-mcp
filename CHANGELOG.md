@@ -6,6 +6,58 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.50]
+
+### Added
+
+- **Edit large objects without hitting the I/O cap (#39).** A big class/program
+  could be read (large reads auto-persist to a file) but not written back, since
+  the new source had to be an inline string. Two symmetric params close the gap:
+  - `adt_set_source` accepts `sourceFile` (a local path); the MCP process reads
+    it and PUTs it, so there is no size ceiling. Mutually exclusive with
+    `source`.
+  - `adt_get_source` accepts `outputFile`; the fetched source is written straight
+    to disk and the response omits the inline `source` (returns `bytesWritten`).
+    Respects `firstLine`/`lastLine`/`onlyMethod`.
+
+  This makes read → edit-on-disk → write round-trips for multi-thousand-line
+  objects possible without the source ever passing through the agent context.
+
+### Fixed
+
+- **`adt_set_source` 500 from a blank transport (#68).** A transport passed as a
+  whitespace string (`" "`) reached the CTS backend as `corrNr=%20` and 500'd.
+  `AdtClient` now drops null/undefined/blank query values uniformly, so every
+  `corrNr`-bearing tool (set_source, chunked, activate/delete, rap) is covered.
+- **`adt_syntax_check` 500 uriMappingError on a namespaced context (#67).** A
+  namespaced program name like `/FGLR/R_PO_ASSET_CREATE` starts with `/`, so it
+  was mistaken for a ready-made ADT URI and produced an unmappable `?context=`.
+  Only the `/sap/bc/adt/` prefix now marks a URI; everything else is encoded as a
+  program name.
+- **`adt_get_source` 406 on a subtyped DDIC type (#66).** `type: "DOMA/DD"` was
+  not collapsed before the metadata-XML Accept lookup, so it missed the table and
+  fetched `text/plain` (which domains 406). A new `baseType` collapses decorative
+  subtypes (`DOMA/DD` → `DOMA`) for the lookup.
+- **`adt_create_object` 415 on CDS/DDLS (#64).** Some systems register neither
+  versioned media type for a create; the reference client (abap-adt-api) always
+  creates with `application/*`. The 415 fallback chain now ends with that
+  wildcard, rescuing systems that reject every versioned type.
+- **`adt_get_source` no longer crashes on wrong param names (#65).** Passing
+  `object_name`/`object_type` (instead of `object`/`type`) already returned a
+  clean error rather than the old `normalizeType` crash; the hint now names the
+  exact wrong field.
+- **`adt_create_transport` no longer sends `tm:target=""` (#63).** An empty
+  target attribute could trigger an opaque 500; it is now omitted so CTS applies
+  the default route. (TR *creation* may still need SAP GUI on some systems —
+  assign changes to an existing TR headless instead; documented on the tool.)
+
+### Internal
+
+- Automatic error reports now carry an anonymous, random install id (cached at
+  `~/.sap-adt-mcp/install-id`) so repeat reports from one install can be grouped
+  for triage. It identifies neither the user nor the system, and is only written
+  when reporting is enabled.
+
 ## [0.8.49]
 
 ### Changed

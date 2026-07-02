@@ -86,6 +86,15 @@ function collapseSubtype(t) {
   return t;
 }
 
+// The canonical base type: normalize aliases, then collapse a decorative
+// TADIR subtype (DOMA/DD → DOMA) the same way objectUri/sourceUri do internally.
+// Callers that dispatch on the type (e.g. the metadata-XML Accept lookup) must
+// use this, not the raw normalizeType output — a subtype like "DOMA/DD" otherwise
+// misses the table and falls through to a text/plain fetch that 406s (#66).
+export function baseType(input) {
+  return collapseSubtype(normalizeType(input));
+}
+
 export function objectUri({ type, name, group }) {
   const t = collapseSubtype(normalizeType(type));
   if (typeof name !== "string" || name.length === 0) {

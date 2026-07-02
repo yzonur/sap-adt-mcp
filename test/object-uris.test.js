@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { objectUri, sourceUri, normalizeType } from "../src/object-uris.js";
+import { objectUri, sourceUri, normalizeType, baseType } from "../src/object-uris.js";
 
 test("normalizeType maps friendly aliases to TADIR codes", () => {
   assert.equal(normalizeType("program"), "PROG");
@@ -170,6 +170,17 @@ test("METADATA_XML_ACCEPT covers the DDIC primitives that 406 on text/plain", as
   assert.equal(METADATA_XML_ACCEPT.MSAG, "application/vnd.sap.adt.messageclass.v2+xml");
   // The object URI for a data element is where the XML metadata is served.
   assert.equal(objectUri({ type: "dataelement", name: "KDIFF" }), "/sap/bc/adt/ddic/dataelements/kdiff");
+});
+
+test("baseType collapses decorative subtypes but keeps them for the accept lookup (#66)", () => {
+  // "DOMA/DD" must resolve to DOMA so the metadata-XML Accept lookup hits — else
+  // get_source falls through to text/plain and 406s.
+  assert.equal(baseType("DOMA/DD"), "DOMA");
+  assert.equal(baseType("DTEL/DE"), "DTEL");
+  assert.equal(baseType("domain"), "DOMA");
+  // Function-group subtypes stay significant (different endpoints).
+  assert.equal(baseType("FUGR/FF"), "FUGR/FF");
+  assert.equal(baseType("FUGR/I"), "FUGR/I");
 });
 
 test("objectUri throws a clear error when name is missing (guards against TypeError crash)", () => {

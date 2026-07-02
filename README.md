@@ -198,9 +198,12 @@ so on startup. There are three channels:
    missing capability) via the **`adt_report_issue`** tool.
 
 What is sent: the sap-adt-mcp version, Node version, OS, the tool name, and the
-error/finding with a fingerprint for de-duplication. Before anything leaves your
-machine it is scrubbed of **hostnames, users, passwords, tokens, IPs, and
-emails**; tool arguments and free-text fields are redacted the same way. Reports
+error/finding with a fingerprint for de-duplication, plus an **anonymous install
+id** (random bytes, cached at `~/.sap-adt-mcp/install-id`) that lets repeat
+reports from the same install be grouped for triage — it identifies neither you
+nor your system. Before anything leaves your machine it is scrubbed of
+**hostnames, users, passwords, tokens, IPs, and emails**; tool arguments and
+free-text fields are redacted the same way. Reports
 go to a relay the maintainer owns, which files/de-dups a GitHub issue — the
 relay holds the GitHub credentials, never this package.
 
@@ -310,8 +313,8 @@ or rejecting credentials. Run this first when troubleshooting.
 
 | Tool | Purpose | Notes |
 | --- | --- | --- |
-| `adt_get_source` | Fetch ABAP source by object name + type. | Returns plain text. For classes, pick the include via `include`: `main` (default), `definitions`, `implementations`, `macros`, `testclasses`. Function modules require `group`. |
-| `adt_set_source` | Replace source. Orchestrates lock → PUT → unlock. | Optional `transport` parameter assigns the change to a TR (`corrNr`). Optional `lockHandle` to reuse an externally-acquired lock. Refused under `readOnly: true`. |
+| `adt_get_source` | Fetch ABAP source by object name + type. | Returns plain text. For classes, pick the include via `include`: `main` (default), `definitions`, `implementations`, `macros`, `testclasses`. Function modules require `group`. For large objects, pass `outputFile` to write the source straight to disk (response omits inline `source`). |
+| `adt_set_source` | Replace source. Orchestrates lock → PUT → unlock. | Supply the new source inline via `source`, or via `sourceFile` (a local path the MCP reads itself) for large objects that exceed the per-call I/O cap. Optional `transport` assigns the change to a TR (`corrNr`); optional `lockHandle` reuses an externally-acquired lock. Refused under `readOnly: true`. |
 | `adt_create_object` | Create a new ABAP object in a package. | Supported types: program, class, interface, include, functiongroup, function, cds, accesscontrol, metadataext, behaviordef, messageclass. After creation, set the source body with `adt_set_source` and activate. Refused under `readOnly: true`. |
 | `adt_delete_object` | Delete an object. | Acquires lock and DELETEs. Refused under `readOnly: true`. |
 | `adt_activate` | Activate one or more objects. | Pass `objects: [{ name, type, group? }]`. |
@@ -607,6 +610,25 @@ sticky-lock pattern:
 
 The `lockHandle` parameter on `adt_set_source` skips internal lock/unlock
 when present.
+
+### Large objects (thousands of lines)
+
+A multi-thousand-line class or program can exceed the per-call I/O cap, so its
+source cannot be passed inline. Keep the content on disk instead — it never
+enters the agent context:
+
+```text
+1.  adt_get_source { object: "ZCL_BIG", type: "class",
+                     outputFile: "/tmp/zcl_big.abap" }   → writes the file, no inline source
+2.  (edit /tmp/zcl_big.abap locally)
+3.  adt_set_source { object: "ZCL_BIG", type: "class",
+                     sourceFile: "/tmp/zcl_big.abap",
+                     transport: "E4DK900123" }           → MCP reads the file and PUTs it
+```
+
+Note: assigning to a transport works headless, but TR *creation*
+(`adt_create_transport`) routes through a GUI dialog on some systems and can
+fail with a 500 — pass an existing TR id instead.
 
 ## Caveats
 

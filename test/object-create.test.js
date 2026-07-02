@@ -139,23 +139,28 @@ test("responsible attribute included when provided", () => {
   assert.match(r.body, /adtcore:responsible="DEVELOPER"/);
 });
 
-test("mediaTypeFallbacks walks versioned content types down to v1", () => {
+test("mediaTypeFallbacks walks versioned content types down to v1, then the wildcard", () => {
   assert.deepEqual(mediaTypeFallbacks("application/vnd.sap.adt.ddlsource.v2+xml"), [
     "application/vnd.sap.adt.ddlsource.v2+xml",
     "application/vnd.sap.adt.ddlsource.v1+xml",
+    "application/*",
   ]);
   assert.deepEqual(mediaTypeFallbacks("application/vnd.sap.adt.oo.classes.v3+xml"), [
     "application/vnd.sap.adt.oo.classes.v3+xml",
     "application/vnd.sap.adt.oo.classes.v2+xml",
     "application/vnd.sap.adt.oo.classes.v1+xml",
+    "application/*",
   ]);
 });
 
-test("mediaTypeFallbacks leaves unversioned content types untouched", () => {
-  assert.deepEqual(mediaTypeFallbacks("text/plain"), ["text/plain"]);
+test("mediaTypeFallbacks appends the wildcard to unversioned types, without duplicating it", () => {
+  assert.deepEqual(mediaTypeFallbacks("text/plain"), ["text/plain", "application/*"]);
   assert.deepEqual(mediaTypeFallbacks("application/vnd.sap.adt.foo+xml"), [
     "application/vnd.sap.adt.foo+xml",
+    "application/*",
   ]);
+  // The wildcard itself is its own single-item chain (no application/*, application/*).
+  assert.deepEqual(mediaTypeFallbacks("application/*"), ["application/*"]);
 });
 
 test("postCreate retries with a lower media-type version on 415", async () => {
@@ -205,7 +210,7 @@ test("postCreate stops at the first non-415 response", async () => {
   assert.equal(res.status, 201);
 });
 
-test("postCreate returns the last 415 when every version is rejected", async () => {
+test("postCreate returns the last 415 when every version AND the wildcard are rejected", async () => {
   const attempts = [];
   const client = {
     async request({ headers }) {
@@ -221,7 +226,40 @@ test("postCreate returns the last 415 when every version is rejected", async () 
   assert.deepEqual(attempts, [
     "application/vnd.sap.adt.ddlsource.v2+xml",
     "application/vnd.sap.adt.ddlsource.v1+xml",
+    "application/*",
   ]);
   assert.equal(res.status, 415);
-  assert.equal(contentType, "application/vnd.sap.adt.ddlsource.v1+xml");
+  assert.equal(contentType, "application/*");
+});
+
+test("postCreate: the wildcard rescues a system that 415s every versioned type (#64)", async () => {
+  // The #64 system rejected both ddlsource.v2 and .v1 with 415; ADT's create
+  // framework still honours application/*, so the create must ultimately succeed.
+  const attempts = [];
+  const client = {
+    async request({ headers }) {
+      const ct = headers["Content-Type"];
+      attempts.push(ct);
+      const ok = ct === "application/*";
+      return {
+        ok,
+        status: ok ? 201 : 415,
+        async text() {
+          return ok ? "<created/>" : "Unsupported Media Type";
+        },
+      };
+    },
+  };
+  const { res, contentType } = await postCreate(client, {
+    path: "/sap/bc/adt/ddic/ddl/sources",
+    contentType: "application/vnd.sap.adt.ddlsource.v2+xml",
+    body: "<ddl/>",
+  });
+  assert.deepEqual(attempts, [
+    "application/vnd.sap.adt.ddlsource.v2+xml",
+    "application/vnd.sap.adt.ddlsource.v1+xml",
+    "application/*",
+  ]);
+  assert.equal(res.status, 201);
+  assert.equal(contentType, "application/*");
 });

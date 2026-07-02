@@ -232,3 +232,22 @@ test("adt_read_table: POSTs with the data-preview table Accept header", async ()
   );
   assert.equal(calls[0].headers["Content-Type"], "text/plain; charset=utf-8");
 });
+
+// ─── Bug: adt_create_transport sent tm:target="" → opaque 500 (#63) ──────────
+
+test("adt_create_transport: no target omits tm:target entirely (not tm:target='')", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = registerTransports(ctx);
+  await h.adt_create_transport({ description: "FIT Service WO fix" });
+  const body = calls[0].body;
+  assert.doesNotMatch(body, /tm:target/, "blank target must not be emitted");
+  assert.match(body, /tm:desc="FIT Service WO fix"/);
+  assert.match(body, /tm:type="K"/);
+});
+
+test("adt_create_transport: a real target is emitted (trimmed)", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = registerTransports(ctx);
+  await h.adt_create_transport({ description: "d", target: "  LOCAL  " });
+  assert.match(calls[0].body, /tm:target="LOCAL"/);
+});

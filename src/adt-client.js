@@ -108,7 +108,9 @@ export class AdtClient {
         path: resolvedPath,
         status: res.status,
         ok: res.ok,
-        ...(query?.corrNr ? { transport: String(query.corrNr) } : {}),
+        ...(query?.corrNr && String(query.corrNr).trim()
+          ? { transport: String(query.corrNr).trim() }
+          : {}),
       });
     }
 
@@ -285,7 +287,15 @@ export class AdtClient {
     }
     if (query) {
       for (const [k, v] of Object.entries(query)) {
-        url.searchParams.set(k, String(v));
+        // A null/undefined/blank value is never a meaningful ADT query param, and
+        // a whitespace-only one is actively harmful: a transport passed as " "
+        // reaches the CTS backend as corrNr=%20 and 500s the request (#68). Skip
+        // empties uniformly so every corrNr-bearing tool (set_source, chunked,
+        // activate/delete, rap) is covered at one point.
+        if (v == null) continue;
+        const s = String(v);
+        if (s.trim() === "") continue;
+        url.searchParams.set(k, s);
       }
     }
     return url.toString();

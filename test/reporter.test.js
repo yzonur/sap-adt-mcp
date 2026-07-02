@@ -350,3 +350,25 @@ test("reportAdtError never fires for the adt_request escape hatch", async () => 
     assert.equal(calls.length, 1);
   });
 });
+
+test("attaches a stable, anonymous 16-hex install id to every report", async () => {
+  await withCapturedFetch(async (calls) => {
+    const reporter = createReporter(baseConfig(), PKG);
+    await reporter.report(new Error("first boom"), { tool: "a" });
+    await reporter.report(new Error("second boom"), { tool: "b" });
+
+    assert.equal(calls.length, 2);
+    const id1 = calls[0].body.install;
+    const id2 = calls[1].body.install;
+    assert.match(id1, /^[0-9a-f]{16}$/, "install id must be 16 hex chars");
+    assert.equal(id1, id2, "install id must be stable within a process");
+  });
+});
+
+test("omits the install id entirely when reporting is disabled", async () => {
+  await withCapturedFetch(async (calls) => {
+    const reporter = createReporter(baseConfig({ enabled: false }), PKG);
+    await reporter.report(new Error("boom"), { tool: "a" });
+    assert.equal(calls.length, 0, "disabled reporter must not send");
+  });
+});

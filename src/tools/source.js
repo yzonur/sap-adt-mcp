@@ -1,7 +1,35 @@
-import { sourceUri, objectUri, normalizeType, METADATA_XML_ACCEPT } from "../object-uris.js";
+import fs from "node:fs";
+import path from "node:path";
+import { sourceUri, objectUri, normalizeType, baseType, METADATA_XML_ACCEPT } from "../object-uris.js";
 import { acquireLock, releaseLock } from "../lock.js";
 import { errorResult, jsonResult, textResult } from "../result.js";
 import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
+
+// Read a local file for a write. The MCP process reads it directly, so a large
+// object's source never has to travel back through the agent's per-call I/O cap
+// (#39). fs errors become a clean { ok:false } instead of a crash.
+function readLocalFile(p) {
+  try {
+    return { ok: true, content: fs.readFileSync(p, "utf8") };
+  } catch (err) {
+    const why = err.code === "ENOENT" ? "file not found" : err.message;
+    return { ok: false, error: why };
+  }
+}
+
+// Write fetched source straight to disk (symmetric to readLocalFile) so a big
+// read → edit → write round-trip can stay entirely on the filesystem. Creates
+// the parent directory if needed.
+function writeLocalFile(p, content) {
+  try {
+    const dir = path.dirname(p);
+    if (dir) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(p, content);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
 
 const TOP_LEVEL_KEYWORDS = [
   "CLASS",
@@ -120,7 +148,7 @@ export const tools = [
   {
     name: "adt_get_source",
     description:
-      "Fetch the ABAP source of an object (program, class, interface, function module, include, CDS, table). Returns plain text. DDIC primitives without plain-text source (data element, domain, message class) return their ADT XML metadata instead (format: 'xml'). For sources larger than the MCP per-call output cap (~64 KB), use firstLine/lastLine to paginate or onlyMethod to slice a single method body.",
+      "Fetch the ABAP source of an object (program, class, interface, function module, include, CDS, table). Returns plain text. DDIC primitives without plain-text source (data element, domain, message class) return their ADT XML metadata instead (format: 'xml'). For sources larger than the MCP per-call output cap (~64 KB), use firstLine/lastLine to paginate or onlyMethod to slice a single method body — or pass `outputFile` to write the full source straight to disk (then edit it and write it back with adt_set_source `sourceFile`, keeping large objects entirely off the agent's I/O path).",
     inputSchema: {
       type: "object",
       properties: {
@@ -152,6 +180,11 @@ export const tools = [
           description:
             "Return only the METHOD <name> ... ENDMETHOD block (case-insensitive). Returns metadata about the slice (startLine, endLine). Convenient for inspecting one method of a large class without paginating manually.",
         },
+        outputFile: {
+          type: "string",
+          description:
+            "Local file path to write the source to instead of returning it inline. The response carries metadata (bytesWritten, totalLines) but omits `source`, so an arbitrarily large object can be fetched without hitting the output cap. Respects firstLine/lastLine/onlyMethod when set (otherwise writes the full source).",
+        },
       },
       required: ["object", "type"],
     },
@@ -159,7 +192,7 @@ export const tools = [
   {
     name: "adt_set_source",
     description:
-      "Replace the ABAP source of an object. The supplied `source` is the FULL text of the include — it ATOMICALLY REPLACES the entire include on the server. Passing a partial chunk or diff will delete the rest of the include. Orchestrates lock → PUT → unlock automatically. Requires read-only mode to be off for the target system.",
+      "Replace the ABAP source of an object. The new source is the FULL text of the include — it ATOMICALLY REPLACES the entire include on the server. Passing a partial chunk or diff will delete the rest of the include. Supply the source inline via `source`, OR — for a large object that would blow the per-call I/O cap — via `sourceFile` (a local path the MCP process reads itself). Orchestrates lock → PUT → unlock automatically. Requires read-only mode to be off for the target system.",
     inputSchema: {
       type: "object",
       properties: {
@@ -175,7 +208,12 @@ export const tools = [
         source: {
           type: "string",
           description:
-            "New ABAP source code — FULL text of the include. Atomic replace. Do not pass a partial diff.",
+            "New ABAP source code — FULL text of the include. Atomic replace. Do not pass a partial diff. Mutually exclusive with `sourceFile`.",
+        },
+        sourceFile: {
+          type: "string",
+          description:
+            "Local file path whose contents become the new FULL source. The MCP process reads the file, so there is no size ceiling — use this for large objects (e.g. a multi-thousand-line class) that cannot be passed inline. Mutually exclusive with `source`.",
         },
         transport: {
           type: "string",
@@ -193,7 +231,7 @@ export const tools = [
             "Set to true to bypass the partial-source guard (e.g. when writing a content-free or fragment include intentionally). The guard rejects sources whose first non-comment line does not start with a recognized top-level ABAP construct keyword.",
         },
       },
-      required: ["object", "type", "source"],
+      required: ["object", "type"],
     },
   },
   {
@@ -273,23 +311,35 @@ export function register({ getClient }) {
   return {
     adt_get_source: async (args) => {
       if (typeof args.object !== "string" || args.object.length === 0) {
-        const hint =
-          args.name !== undefined
-            ? " (you passed `name` — the field is `object`)"
-            : "";
+        const wrong =
+          args.object_name !== undefined
+            ? "object_name"
+            : args.name !== undefined
+              ? "name"
+              : null;
+        const hint = wrong ? ` (you passed \`${wrong}\` — the field is \`object\`)` : "";
         return textResult(
           `adt_get_source: \`object\` is required${hint}. Also use \`firstLine\`/\`lastLine\` (not \`line\`/\`endLine\`) to paginate.`,
           true
         );
       }
       if (typeof args.type !== "string" || args.type.length === 0) {
-        return textResult("adt_get_source: `type` is required (e.g. 'class', 'program', 'dataelement').", true);
+        const hint =
+          args.object_type !== undefined
+            ? " (you passed `object_type` — the field is `type`)"
+            : "";
+        return textResult(
+          `adt_get_source: \`type\` is required${hint} (e.g. 'class', 'program', 'dataelement').`,
+          true
+        );
       }
       const { client, name: sys } = getClient(args.system);
       let t;
       let path;
       try {
-        t = normalizeType(args.type);
+        // Collapse decorative subtypes (DOMA/DD → DOMA) so the metadata-XML
+        // Accept lookup below matches; sourceUri collapses internally already.
+        t = baseType(args.type);
         path = sourceUri({
           type: args.type,
           name: args.object,
@@ -315,17 +365,24 @@ export function register({ getClient }) {
         const res = await client.request({ path, accept: metaAccept });
         const text = await res.text();
         if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
-        return jsonResult({
+        const xmlMeta = {
           system: sys,
           object: args.object,
           type: t,
           path,
           format: "xml",
-          source: text,
           bytes: text.length,
           totalLines: text.split(/\r?\n/).length,
           note: `${t} has no plain-text source; returning ADT XML metadata (${metaAccept.split("+")[0]}+xml).`,
-        });
+        };
+        if (args.outputFile) {
+          const w = writeLocalFile(args.outputFile, text);
+          if (!w.ok) {
+            return errorResult(sys, 500, `Could not write outputFile ${JSON.stringify(args.outputFile)}: ${w.error}`, "text/plain", { stage: "output" });
+          }
+          return jsonResult({ ...xmlMeta, outputFile: args.outputFile, bytesWritten: text.length });
+        }
+        return jsonResult({ ...xmlMeta, source: text });
       }
 
       const res = await client.request({ path, accept: "text/plain" });
@@ -374,12 +431,11 @@ export function register({ getClient }) {
       }
 
       const slice = allLines.slice(sliceFirst - 1, sliceLast).join("\n");
-      return jsonResult({
+      const meta = {
         system: sys,
         object: args.object,
         type: normalizeType(args.type),
         path,
-        source: slice,
         bytes: slice.length,
         lines: sliceLast - sliceFirst + 1,
         totalLines,
@@ -388,13 +444,48 @@ export function register({ getClient }) {
         lastLine: sliceLast,
         scope,
         truncated: scope !== "full",
-      });
+      };
+      if (args.outputFile) {
+        const w = writeLocalFile(args.outputFile, slice);
+        if (!w.ok) {
+          return errorResult(sys, 500, `Could not write outputFile ${JSON.stringify(args.outputFile)}: ${w.error}`, "text/plain", { stage: "output" });
+        }
+        return jsonResult({ ...meta, outputFile: args.outputFile, bytesWritten: slice.length });
+      }
+      return jsonResult({ ...meta, source: slice });
     },
 
     adt_set_source: async (args) => {
       const { client, name: sys } = getClient(args.system);
+
+      // Resolve the new source from either inline `source` or a local
+      // `sourceFile` (read here by the MCP, so large objects bypass the agent's
+      // I/O cap — #39). Exactly one of the two must be supplied.
+      const hasInline = typeof args.source === "string";
+      const hasFile = typeof args.sourceFile === "string" && args.sourceFile.length > 0;
+      if (hasInline && hasFile) {
+        return textResult("adt_set_source: pass either `source` or `sourceFile`, not both.", true);
+      }
+      if (!hasInline && !hasFile) {
+        return textResult(
+          "adt_set_source: `source` (inline full text) or `sourceFile` (local path) is required.",
+          true
+        );
+      }
+      let source = args.source;
+      if (hasFile) {
+        const rd = readLocalFile(args.sourceFile);
+        if (!rd.ok) {
+          return textResult(
+            `adt_set_source: could not read sourceFile ${JSON.stringify(args.sourceFile)}: ${rd.error}.`,
+            true
+          );
+        }
+        source = rd.content;
+      }
+
       if (!args.acknowledgePartial) {
-        const partialReason = detectPartialSource(args.source);
+        const partialReason = detectPartialSource(source);
         if (partialReason) {
           return errorResult(sys, 422, partialReason, "text/plain", {
             stage: "validate",
@@ -438,7 +529,7 @@ export function register({ getClient }) {
             "Content-Type": "text/plain; charset=utf-8",
             "X-sap-adt-sessiontype": "stateful",
           },
-          body: args.source,
+          body: source,
         });
         const putText = await putRes.text();
         if (!putRes.ok) {

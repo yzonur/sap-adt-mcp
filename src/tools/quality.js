@@ -156,10 +156,17 @@ async function runAtcWorklist(client, sys, { uris, checkVariant, maxResults }) {
 }
 
 // Normalize a caller-supplied include context into an ADT object URI. Accepts a
-// full ADT path as-is; treats a bare token as a program name.
+// full ADT path as-is; treats anything else as a program name.
+//
+// A real ADT object URI begins with the ADT path prefix. A *namespaced* ABAP
+// name (e.g. "/FGLR/R_PO_ASSET_CREATE") also begins with "/", so keying on a
+// leading slash alone misclassified it as a ready-made URI and produced an
+// unmappable ?context= → 500 uriMappingError (#67). Only the ADT-path prefix
+// marks a ready URI; every other value — bare or namespaced — is a program name
+// whose slashes must be percent-encoded into the programs URI.
 export function toContextUri(input) {
   const s = String(input).trim();
-  if (s.startsWith("/")) return s;
+  if (s.startsWith("/sap/bc/adt/")) return s;
   return `/sap/bc/adt/programs/programs/${encodeURIComponent(s.toLowerCase())}`;
 }
 

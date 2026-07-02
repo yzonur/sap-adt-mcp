@@ -201,20 +201,32 @@ export function buildCreateRequest({
   }
 }
 
+// The ADT object-create framework accepts a wildcard content type on the POST;
+// abap-adt-api (the reference client) creates *every* object type with exactly
+// this, never a resource-specific media type. It is our universal last resort.
+export const GENERIC_CREATE_MEDIA_TYPE = "application/*";
+
 // Most ADT create endpoints version their media type (…v2+xml, …v3+xml). The
 // shapes above target the newest version a modern stack accepts, but older
 // systems only know an earlier one and answer the newer media type with
 // 415 ExceptionUnsupportedMediaType. Given a content-type, return the chain to
-// try: the requested version first, then every lower version down to v1.
-// A content-type with no `.vN+xml` segment is returned unchanged (single item).
+// try: the requested version first, then every lower version down to v1, then
+// the generic wildcard as a final catch-all — some systems register neither
+// versioned type for a given object (e.g. DDLS/CDS create 415'd on both v2 and
+// v1, #64), but the create framework always honours application/*.
 export function mediaTypeFallbacks(contentType) {
   const m = /^(.*\.)v(\d+)(\+xml)$/.exec(contentType);
-  if (!m) return [contentType];
+  if (!m) {
+    return contentType === GENERIC_CREATE_MEDIA_TYPE
+      ? [contentType]
+      : [contentType, GENERIC_CREATE_MEDIA_TYPE];
+  }
   const [, prefix, ver, suffix] = m;
   const chain = [];
   for (let v = Number(ver); v >= 1; v--) {
     chain.push(`${prefix}v${v}${suffix}`);
   }
+  chain.push(GENERIC_CREATE_MEDIA_TYPE);
   return chain;
 }
 
