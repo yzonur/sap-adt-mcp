@@ -1,6 +1,6 @@
 import { objectUri, sourceUri } from "../object-uris.js";
 import { fetchPackageNodes } from "../node-structure.js";
-import { parseObjectReferences } from "../object-references.js";
+import { parseObjectReferences, parseUsageReferences } from "../object-references.js";
 import { errorResult, jsonResult, textResult } from "../result.js";
 import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
 
@@ -279,23 +279,34 @@ export function register({ getClient }) {
 
     adt_where_used: async (args) => {
       const { client, name: sys } = getClient(args.system);
-      const uri = objectUri({ type: args.type, name: args.object, group: args.group });
+      let uri;
+      try {
+        uri = objectUri({ type: args.type, name: args.object, group: args.group });
+      } catch (err) {
+        // e.g. a function module (FUGR/FF) passed without its group — objectUri
+        // throws. Return a clean tool error instead of crashing (#74).
+        return textResult(`adt_where_used: ${err.message}`, true);
+      }
+      // The endpoint requires a real request body with a <usageReferenceRequest>
+      // root; the previous empty POST 400'd with "System expected the element
+      // usageReferenceRequest" on every object (#73). An empty <affectedObjects/>
+      // means "all usages of <uri>". Mirrors the reference client (abap-adt-api).
+      const body =
+        `<?xml version="1.0" encoding="UTF-8"?>` +
+        `<usagereferences:usageReferenceRequest xmlns:usagereferences="http://www.sap.com/adt/ris/usageReferences">` +
+        `<usagereferences:affectedObjects/>` +
+        `</usagereferences:usageReferenceRequest>`;
       const res = await client.request({
         method: "POST",
         path: "/sap/bc/adt/repository/informationsystem/usageReferences",
         query: { uri },
-        // Without this the server rejects the POST with 400 "Content type
-        // missing" — it hits DDIC objects (tables, structures) where the tool
-        // sent no request entity. The typed (empty) body is what ADT expects to
-        // mean "all usages of <uri>".
-        headers: {
-          "Content-Type":
-            "application/vnd.sap.adt.repository.usageReferences.request.v1+xml",
-        },
+        headers: { "Content-Type": "application/*" },
+        accept: "application/*",
+        body,
       });
       const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
-      const refs = parseObjectReferences(text);
+      const refs = parseUsageReferences(text);
       return jsonResult({
         system: sys,
         object: args.object,

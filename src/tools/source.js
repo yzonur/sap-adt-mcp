@@ -484,7 +484,29 @@ export function register({ getClient }) {
         source = rd.content;
       }
 
-      if (!args.acknowledgePartial) {
+      let metaType = null;
+      let objUri;
+      let srcPath;
+      try {
+        // DDIC primitives (domain / data element / message class) are edited as
+        // XML metadata, so their PUT uses the resource media type, not text/plain.
+        metaType = METADATA_XML_ACCEPT[baseType(args.type)] ?? null;
+        objUri = objectUri({ type: args.type, name: args.object, group: args.group });
+        srcPath = sourceUri({
+          type: args.type,
+          name: args.object,
+          group: args.group,
+          include: args.include,
+        });
+      } catch (err) {
+        // Bad/unknown type, or a function module without its group — return a
+        // clean error instead of crashing (cf. #65/#74).
+        return textResult(`adt_set_source: ${err.message}`, true);
+      }
+
+      // The partial-source guard only makes sense for plain ABAP text; XML
+      // metadata (metaType set) never starts with an ABAP keyword, so skip it.
+      if (!metaType && !args.acknowledgePartial) {
         const partialReason = detectPartialSource(source);
         if (partialReason) {
           return errorResult(sys, 422, partialReason, "text/plain", {
@@ -493,17 +515,6 @@ export function register({ getClient }) {
           });
         }
       }
-      const objUri = objectUri({
-        type: args.type,
-        name: args.object,
-        group: args.group,
-      });
-      const srcPath = sourceUri({
-        type: args.type,
-        name: args.object,
-        group: args.group,
-        include: args.include,
-      });
 
       const externalLock = typeof args.lockHandle === "string" && args.lockHandle.length > 0;
       let handle = args.lockHandle;
@@ -526,7 +537,7 @@ export function register({ getClient }) {
           path: srcPath,
           query: putQuery,
           headers: {
-            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Type": metaType ? metaType : "text/plain; charset=utf-8",
             "X-sap-adt-sessiontype": "stateful",
           },
           body: source,

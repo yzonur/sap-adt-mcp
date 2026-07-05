@@ -197,17 +197,24 @@ test("adt_search_objects: quickSearch goes over GET, not POST", async () => {
   );
 });
 
-// ─── Bug C: adt_where_used sends the usageReferences Content-Type ──────────────
+// ─── Bug C: adt_where_used request body + crash guard (#73/#74) ────────────────
 
-test("adt_where_used: POSTs with the usageReferences request Content-Type", async () => {
+test("adt_where_used: POSTs a usageReferenceRequest body so the server accepts it (#73)", async () => {
   const { ctx, calls } = makeCtx();
   const h = registerDiscovery(ctx);
   await h.adt_where_used({ object: "/FGLR/S_MEAS_CHARACTERISTIC", type: "table" });
   assert.equal(calls[0].method, "POST");
-  assert.equal(
-    calls[0].headers["Content-Type"],
-    "application/vnd.sap.adt.repository.usageReferences.request.v1+xml"
-  );
+  assert.match(calls[0].body, /usageReferenceRequest/, "body must carry the expected root element");
+  assert.match(calls[0].body, /affectedObjects/);
+  assert.equal(calls[0].headers["Content-Type"], "application/*");
+});
+
+test("adt_where_used: a function module without group returns a clean error, not a crash (#74)", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = registerDiscovery(ctx);
+  const r = await h.adt_where_used({ object: "/FGLR/DELIVERY_CREATE", type: "FUGR/FF" });
+  assert.match(r.content[0].text, /pass 'group'/);
+  assert.equal(calls.length, 0, "must not issue a request when the URI can't be built");
 });
 
 // ─── Bug B: adt_read_table sends the data-preview table Accept header ──────────

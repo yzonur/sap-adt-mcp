@@ -120,3 +120,34 @@ test("adt_get_source outputFile respects a line range", async () => {
   assert.equal(payload.scope, "range:1-3");
   assert.equal(fs.readFileSync(out, "utf8"), BIG_SOURCE.split("\n").slice(0, 3).join("\n"));
 });
+
+test("adt_set_source PUTs DDIC primitives with their XML media type, not text/plain (#72)", async () => {
+  const { ctx, calls } = captureClient();
+  const h = register(ctx);
+  const domainXml =
+    '<?xml version="1.0" encoding="utf-8"?><doma:domain adtcore:name="ZRFT_DOM_EXP_ID" adtcore:type="DOMA/DD"/>';
+  const r = await h.adt_set_source({
+    object: "ZRFT_DOM_EXP_ID",
+    type: "domain",
+    source: domainXml,
+    lockHandle: "H1",
+  });
+  assert.doesNotMatch(r.content[0].text, /error/i);
+  const put = calls.find((c) => c.method === "PUT");
+  assert.ok(put, "a PUT must be issued (partial-source guard must not block XML)");
+  assert.equal(put.headers["Content-Type"], "application/vnd.sap.adt.domains.v2+xml");
+  assert.equal(put.body, domainXml);
+});
+
+test("adt_set_source: a function module without group returns a clean error, not a crash", async () => {
+  const { ctx, calls } = captureClient();
+  const h = register(ctx);
+  const r = await h.adt_set_source({
+    object: "/FGLR/DELIVERY_CREATE",
+    type: "FUGR/FF",
+    source: "FUNCTION x.\nENDFUNCTION.",
+    lockHandle: "H1",
+  });
+  assert.match(r.content[0].text, /pass 'group'/);
+  assert.equal(calls.length, 0, "no request when the URI can't be built");
+});

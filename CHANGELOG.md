@@ -6,6 +6,25 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.51]
+
+### Fixed
+
+- **`adt_where_used` returned 400 for every object (#73).** The POST sent no
+  request entity, but the endpoint requires a body with a `<usageReferenceRequest>`
+  root (`System expected the element usageReferenceRequest`). It now sends that
+  body (empty `<affectedObjects/>` = all usages) with `Content-Type: application/*`,
+  mirroring the reference client, and parses the `usageReferences:adtObject`
+  result shape (with a fallback to the flat `objectReference` shape).
+- **`adt_where_used` crashed on a function module without `group` (#74).** The
+  `objectUri` throw for `FUGR/FF` was uncaught; it now returns a clean error
+  asking for `group`. `adt_set_source` got the same guard.
+- **`adt_set_source` 415 on DDIC primitives (#72).** Writing a domain / data
+  element / message class PUT `text/plain`, which the XML-metadata resources
+  reject. It now PUTs with the resource's own media type (e.g.
+  `application/vnd.sap.adt.domains.v2+xml`, symmetric with `adt_get_source`) and
+  skips the ABAP partial-source guard for these types.
+
 ## [0.8.50]
 
 ### Added
