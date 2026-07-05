@@ -484,7 +484,7 @@ export function register({ getClient }) {
         source = rd.content;
       }
 
-      let metaType = null;
+      let metaType;
       let objUri;
       let srcPath;
       try {
