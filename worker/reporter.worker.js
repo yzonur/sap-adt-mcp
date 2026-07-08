@@ -85,20 +85,28 @@ export default {
       "time: " + (r.timestamp || new Date().toISOString());
 
     // --- de-dup search, scoped to this kind's label ---
+    // Match OPEN *and CLOSED* issues by fingerprint. A closed issue is usually a
+    // fixed defect that an un-upgraded install keeps re-reporting; without this
+    // (open-only) every recurrence spawned a brand-new issue (#65 → #75 → #83).
+    // Prefer the most recently updated match; comment rather than reopen so a
+    // triaged issue stays closed while the maintainer still gets a signal.
     const q = encodeURIComponent(
-      'repo:' + REPO + ' is:issue is:open label:' + conf.label +
+      'repo:' + REPO + ' is:issue label:' + conf.label +
       ' "fingerprint:' + fp + '" in:body'
     );
-    const search = await gh("/search/issues?q=" + q, { method: "GET" });
+    const search = await gh("/search/issues?q=" + q + "&sort=updated&order=desc", { method: "GET" });
     const hits = search.ok ? await search.json() : { total_count: 0, items: [] };
 
     if (hits.total_count > 0 && hits.items && hits.items.length) {
       const issue = hits.items[0];
+      const note = issue.state === "closed"
+        ? "Seen again on a closed issue (likely an un-upgraded install re-reporting a fixed defect). Not reopening; reopen if this is a regression on a current version.\n\n"
+        : "Seen again.\n\n";
       await gh("/repos/" + REPO + "/issues/" + issue.number + "/comments", {
         method: "POST",
-        body: JSON.stringify({ body: "Seen again.\n\n" + meta }),
+        body: JSON.stringify({ body: note + meta }),
       });
-      return json({ status: "commented", issue: issue.number });
+      return json({ status: "commented", issue: issue.number, state: issue.state });
     }
 
     // --- build title, body, labels per kind ---

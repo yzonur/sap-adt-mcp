@@ -372,3 +372,10 @@ test("omits the install id entirely when reporting is disabled", async () => {
     assert.equal(calls.length, 0, "disabled reporter must not send");
   });
 });
+
+test("shouldReportAdt skips adt_create_transport 500 (environmental / needs GUI, #78)", () => {
+  const { shouldReportAdt } = _internals;
+  assert.equal(shouldReportAdt({ tool: "adt_create_transport", status: 500 }), false);
+  // A genuine 500 from a request we shaped is still reported.
+  assert.equal(shouldReportAdt({ tool: "adt_activate", status: 500 }), true);
+});

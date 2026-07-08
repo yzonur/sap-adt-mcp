@@ -317,6 +317,16 @@ export function register({ getClient }) {
     },
 
     adt_browse_package: async (args) => {
+      // Guard the required `package` instead of crashing on `.toUpperCase()` of
+      // undefined (#84). Name the wrong field when a common alias was passed.
+      if (typeof args.package !== "string" || args.package.length === 0) {
+        const wrong = args.packageName !== undefined ? "packageName" : args.name !== undefined ? "name" : null;
+        const hint = wrong ? ` (you passed \`${wrong}\` — the field is \`package\`)` : "";
+        return textResult(
+          `adt_browse_package: \`package\` is required${hint} (e.g. 'ZLOCAL' or '/MYNS/MAIN').`,
+          true
+        );
+      }
       const { client, name: sys } = getClient(args.system);
       const pkg = args.package.toUpperCase();
       const r = await fetchPackageNodes(client, pkg);

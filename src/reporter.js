@@ -225,6 +225,13 @@ function shouldReportAdt(meta = {}) {
   // otherwise spam the tracker).
   if (meta.tool === "adt_request") return false;
 
+  // adt_create_transport 500 is environmental, not a tool defect: TR *creation*
+  // routes through a SAP GUI dialog on many systems and blows up headless
+  // (SAPLSTRD/SAPLSPO4 "No window system type"). The payload fix in 0.8.50
+  // didn't stop it (#78, same fingerprint as #63) — the operation itself needs
+  // GUI. Assigning to an existing TR works headless; don't spam the tracker.
+  if (meta.tool === "adt_create_transport" && Number(meta.status) >= 500) return false;
+
   const s = Number(meta.status);
   const type = String(meta.type ?? "");
   const t100id = String(meta.t100?.id ?? "");

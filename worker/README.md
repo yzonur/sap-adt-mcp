@@ -19,9 +19,11 @@ Deployed URL: `https://sap-adt-mcp-reporter.onuryz-itu.workers.dev`
 | `adt-error` | `sap-adt-mcp` | a tool returned a non-2xx ADT result the classifier flags | `auto-adt-error` |
 | `manual` | `sap-adt-mcp-manual` | the agent filed it via `adt_report_issue` | `agent-reported` (+ `bug`/`enhancement`) |
 
-Each kind de-dups within its own label namespace: the relay searches open issues
-with that label for the report's `fingerprint:<hash>` marker; found → adds a
-"Seen again" comment, else → opens a new issue. Both the new-issue body and the
+Each kind de-dups within its own label namespace: the relay searches issues
+(open **and closed**) with that label for the report's `fingerprint:<hash>`
+marker; found → adds a "Seen again" comment (on a closed issue it says so and
+does not reopen, so an un-upgraded install re-reporting a fixed defect can't
+spawn endless new issues), else → opens a new issue. Both the new-issue body and the
 "Seen again" comment carry an anonymous `install:` marker (a client-minted
 16-hex id, validated by shape before use) so you can tell how many distinct
 installs a fingerprint spans. Requests without an allowed `x-report-source` →

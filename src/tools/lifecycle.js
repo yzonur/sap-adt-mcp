@@ -224,11 +224,21 @@ export function register({ getClient }) {
 
     adt_delete_object: async (args) => {
       const { client, name: sys } = getClient(args.system);
-      const objUri = objectUri({
-        type: args.type,
-        name: args.object,
-        group: args.group,
-      });
+      let objUri;
+      try {
+        objUri = objectUri({
+          type: args.type,
+          name: args.object,
+          group: args.group,
+        });
+      } catch (err) {
+        // Missing/mis-typed args (e.g. `name` passed instead of `object`, or an
+        // unsupported type) — return a clean error instead of crashing (#81).
+        const hint = args.object === undefined && args.name !== undefined
+          ? " (you passed `name` — the field is `object`)"
+          : "";
+        return textResult(`adt_delete_object: ${err.message}${hint}.`, true);
+      }
       const lock = await acquireLock(client, objUri, { corrNr: args.transport });
       if (!lock.ok) {
         return errorResult(sys, lock.status, lock.body, lock.contentType, {

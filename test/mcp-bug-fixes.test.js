@@ -258,3 +258,38 @@ test("adt_create_transport: a real target is emitted (trimmed)", async () => {
   await h.adt_create_transport({ description: "d", target: "  LOCAL  " });
   assert.match(calls[0].body, /tm:target="LOCAL"/);
 });
+
+// ─── Bug: adt_browse_package crashed on a missing/aliased package (#84) ────────
+
+test("adt_browse_package: wrong/missing package name returns a clean error, not a crash (#84)", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = registerDiscovery(ctx);
+  const r1 = await h.adt_browse_package({ packageName: "/FGLS/CONFIG" });
+  assert.match(r1.content[0].text, /`package` is required/);
+  assert.match(r1.content[0].text, /you passed `packageName`/);
+  assert.equal(calls.length, 0, "no request when the package name is unusable");
+
+  const r2 = await h.adt_browse_package({});
+  assert.match(r2.content[0].text, /`package` is required/);
+});
+
+test("adt_browse_package: a valid package issues the request (uppercased)", async () => {
+  const { ctx, calls } = makeCtx({
+    responses: [{ ok: true, status: 200, headers: { get: () => "application/xml" }, text: async () => "<nodes/>" }],
+  });
+  const h = registerDiscovery(ctx);
+  const r = await h.adt_browse_package({ package: "zlocal" });
+  assert.ok(!r.isError, "a valid package must not error");
+  assert.equal(calls.length, 1, "the request must be issued");
+});
+
+// ─── Bug: adt_delete_object crashed on bad args instead of erroring (#81) ──────
+
+test("adt_delete_object: `name` instead of `object` returns a clean error, not a crash (#81)", async () => {
+  const { ctx, calls } = makeCtx();
+  const h = registerLifecycle(ctx);
+  const r = await h.adt_delete_object({ name: "ZFIT_GEOLOC_INS_1018808", type: "program" });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /you passed `name`|Object name is required/);
+  assert.equal(calls.length, 0, "must not lock/DELETE when the URI can't be built");
+});

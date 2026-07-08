@@ -6,6 +6,30 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.52]
+
+### Fixed
+
+- **`adt_browse_package` crashed on a missing/mis-named package (#84).** It read
+  `args.package.toUpperCase()` with no guard, so a call with `packageName` (or no
+  package) threw `Cannot read properties of undefined`. It now returns a clean
+  error that names the wrong field.
+- **`adt_delete_object` crashed on bad args (#81).** The `objectUri` build is now
+  wrapped, so passing `name` instead of `object` (or an unsupported type) returns
+  a clean error instead of crashing.
+
+### Changed
+
+- **Stop auto-reporting `adt_create_transport` 500 (#78).** TR *creation* routes
+  through a SAP GUI dialog on many systems and 500s headless regardless of the
+  request (the 0.8.50 blank-target fix didn't change it — the operation itself
+  needs GUI). Treated as environmental, like the CSRF/dependency-graph cases in
+  0.8.49. Assigning to an existing TR still works headless.
+- **Relay de-dup now matches closed issues too.** A fixed defect re-reported by
+  an un-upgraded install used to spawn a brand-new issue every time (open-only
+  search); it now comments on the existing closed issue (without reopening)
+  instead. (worker)
+
 ## [0.8.51]
 
 ### Fixed
