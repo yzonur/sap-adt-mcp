@@ -18,6 +18,11 @@ const READONLY_POST_PATHS = [
   "/sap/bc/adt/atc/",
   // Data preview (OpenSQL SELECT / CDS preview) — read-only query execution.
   "/sap/bc/adt/datapreview/",
+  // External debugger: inspection (listen/attach/stack/variables) and breakpoint
+  // scaffolding POST here but don't modify repository objects. Path-based matching
+  // can't see the ?method= discriminator, so the write actions on this base path
+  // (step / setVariableValue — Phase 2/3) gate on read-only at the TOOL level.
+  "/sap/bc/adt/debugger",
 ];
 
 // Headers a caller is NOT allowed to override via adt_request. Letting these

@@ -43,6 +43,7 @@ prompts** that turn the tool surface into outcome-shaped slash commands
 | Cross-system | `adt_compare_source`, `adt_transport_diff` |
 | Transports | `adt_list_transports`, `adt_get_transport`, `adt_create_transport`, `adt_release_transport` |
 | Runtime errors | `adt_list_dumps`, `adt_get_dump` |
+| Debugger | `adt_debug_set_breakpoint`, `adt_debug_delete_breakpoint`, `adt_debug_listen`, `adt_debug_stack`, `adt_debug_variables`, `adt_debug_stop` |
 | Data | `adt_read_table` |
 | Generation | `adt_rap_scaffold` |
 | Experimental¹ | `adt_get_note`, `adt_check_note_status`, `adt_implement_note`, `adt_list_locks`, `adt_schedule_job`, `adt_read_spool` |
@@ -351,6 +352,37 @@ or rejecting credentials. Run this first when troubleshooting.
 | --- | --- | --- |
 | `adt_list_dumps` | List ST22 short dumps. | Optional filters: `user`, `host`, `from`/`to` (YYYYMMDD), `maxResults` (default 20). Atom feed is parsed into structured entries with `runtimeError`, `program`, `user`, `updated`, and release-specific `rba:*`/`dump:*` fields surfaced as a map. Trims client-side because some releases ignore the server-side cap. |
 | `adt_get_dump` | Fetch a single dump by id. | Two-step fetch: metadata XML (runtime error, program, links) followed by the formatted dump text from the `dump:link relation="contents"` sub-resource. Returns a `chapters` map (shortText, whatHappened, errorAnalysis, howToCorrect, whereTerminated, sourceCodeExtract, …). Pass `chapters: [...]` to limit, `full: true` to include the raw text. |
+
+### Debugger
+
+External ABAP debugger (Phase 1 — inspection). Set a breakpoint, wait for a
+session to hit it, then read the stack and variables. Requires debug
+authorization on the backend; minimum NW 7.31 SP04 + Kernel 7.21 (fine on S/4).
+
+| Tool | Purpose | Notes |
+| --- | --- | --- |
+| `adt_debug_set_breakpoint` | Set an external breakpoint. | Give `uri`, or `object`+`type`(+`include`)+`line`. Optional `condition`. Returns the breakpoint `id`. |
+| `adt_debug_delete_breakpoint` | Remove a breakpoint by `id`. | |
+| `adt_debug_listen` | Bounded wait for a debuggee to hit a breakpoint. | Returns `{ caught: true, debuggee, … }` and auto-attaches, or `{ caught: false }` on timeout (default 30 s, capped 55 s) — just call again. One listener per process. |
+| `adt_debug_stack` | Call stack of the attached debuggee. | |
+| `adt_debug_variables` | Read variable values. | `names: ['sy-subrc','lv_total']`; omit for the scope roots. |
+| `adt_debug_stop` | End the session: delete the listener + all breakpoints it set. | Call when done so nothing dangles on the system. |
+
+Typical flow:
+
+```text
+1.  adt_debug_set_breakpoint { object: "ZREPORT", type: "program", line: 42 }   → id
+2.  (run ZREPORT in SAP GUI / via a Fiori app / a job)
+3.  adt_debug_listen {}          → caught:false? call again. caught:true → attached
+4.  adt_debug_stack {}           → where execution paused
+5.  adt_debug_variables { names: ["sy-subrc", "lv_total"] }
+6.  adt_debug_stop {}            → cleanup
+```
+
+Debugging **another user's** session (`requestUser`) is off by default; enable it
+per system with `"debug": { "allowRequestUser": true }` (needs backend debug
+authorization). Flow-control and value writes (step, set-variable) are a later
+phase; Phase 1 is inspection only.
 
 ### Data
 

@@ -6,6 +6,29 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.53]
+
+### Added
+
+- **ABAP debugger tool set — Phase 1 (inspection) (#88).** The one workflow the
+  MCP couldn't do before. Six tools over ADT's `/sap/bc/adt/debugger/*` REST API:
+  - `adt_debug_set_breakpoint` / `adt_debug_delete_breakpoint` — external
+    line breakpoints (by `uri`, or `object`+`type`+`line`; optional `condition`).
+  - `adt_debug_listen` — bounded long-poll (default 30 s, capped 55 s) that
+    returns `{ caught: false }` on timeout (call again) or auto-attaches and
+    returns the debuggee when a session hits a breakpoint.
+  - `adt_debug_stack` / `adt_debug_variables` — inspect the attached session.
+  - `adt_debug_stop` — delete the listener and every breakpoint it set.
+
+  The listener and its breakpoints share one stable per-process terminal/ide id.
+  Debugging another user's session (`requestUser`) is off unless a system sets
+  `"debug": { "allowRequestUser": true }`. Debug inspection is allowed under
+  read-only mode (it doesn't modify objects); flow-control and value writes
+  (step / set-variable) are a later phase and will gate on read-only.
+
+  Endpoint shapes verified against abap-adt-api's `src/api/debugger.ts`. Each
+  tool also returns the raw ADT XML alongside its parsed summary.
+
 ## [0.8.52]
 
 ### Fixed

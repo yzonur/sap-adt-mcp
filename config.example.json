@@ -22,7 +22,10 @@
       "language": "EN",
       "user": "DEVELOPER",
       "password": "env:SAP_DEV_PASSWORD",
-      "rejectUnauthorized": false
+      "rejectUnauthorized": false,
+      "debug": {
+        "allowRequestUser": false
+      }
     },
     "QAS": {
       "host": "https://sap-qas.example.com:44300",

@@ -36,6 +36,7 @@ import * as jobTools from "./tools/jobs.js";
 import * as rapTools from "./tools/rap.js";
 import * as reportTools from "./tools/report.js";
 import * as panelTools from "./tools/panel.js";
+import * as debugTools from "./tools/debug.js";
 
 const PKG = JSON.parse(
   readFileSync(
@@ -126,6 +127,7 @@ const TOOL_MODULES = [
   rapTools,
   reportTools,
   panelTools,
+  debugTools,
 ];
 
 const tools = [];
