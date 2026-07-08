@@ -183,3 +183,85 @@ test("requestUser gating: allowed when debugAllowRequestUser is set", async () =
   assert.equal(calls.length, 1);
   assert.match(calls[0].body, /requestUser="OTHER"/);
 });
+
+// ── Phase 2 — flow control ──────────────────────────────────────────────────
+
+const STEP_XML = '<dbg:step xmlns:dbg="http://www.sap.com/adt/debugger" isSteppingPossible="true"><actions><action name="stepInto"/></actions></dbg:step>';
+
+test("adt_debug_step maps friendly kinds to ADT DebugStepType", async () => {
+  const { ctx, calls } = makeCtx([{ match: (c) => c.path === "/sap/bc/adt/debugger", reply: { text: STEP_XML } }]);
+  const h = register(ctx);
+  await h.adt_debug_step({ kind: "over" });
+  assert.equal(calls[0].query.method, "stepOver");
+  await h.adt_debug_step({ kind: "continue" });
+  assert.equal(calls[1].query.method, "stepContinue");
+  await h.adt_debug_step({ kind: "terminate" });
+  assert.equal(calls[2].query.method, "terminateDebuggee");
+});
+
+test("adt_debug_step: runToLine requires a uri; unknown kind rejected", async () => {
+  const { ctx, calls } = makeCtx([{ match: () => true, reply: { text: STEP_XML } }]);
+  const h = register(ctx);
+  const r1 = await h.adt_debug_step({ kind: "runToLine" });
+  assert.match(r1.content[0].text, /requires `uri`/);
+  const r2 = await h.adt_debug_step({ kind: "sideways" });
+  assert.match(r2.content[0].text, /unknown kind/);
+  assert.equal(calls.length, 0);
+});
+
+test("adt_debug_step is refused under read-only", async () => {
+  const { ctx, calls } = makeCtx([{ match: () => true, reply: { text: STEP_XML } }], { profile: { user: "DEV", readOnly: true } });
+  const h = register(ctx);
+  const r = await h.adt_debug_step({ kind: "over" });
+  assert.match(r.content[0].text, /read-only/i);
+  assert.equal(calls.length, 0);
+});
+
+test("adt_debug_goto_stack validates the stack URI and accepts a position", async () => {
+  const { ctx, calls } = makeCtx([{ match: () => true, reply: { text: "" } }]);
+  const h = register(ctx);
+  const bad = await h.adt_debug_goto_stack({ stackUri: "/sap/bc/adt/debugger/nope" });
+  assert.match(bad.content[0].text, /stackUri must look like/);
+
+  await h.adt_debug_goto_stack({ stackUri: "/sap/bc/adt/debugger/stack/type/ABAP/position/2" });
+  assert.equal(calls[0].method, "PUT");
+
+  await h.adt_debug_goto_stack({ position: 1 });
+  assert.equal(calls[1].query.method, "setStackPosition");
+  assert.equal(calls[1].query.position, 1);
+});
+
+// ── Phase 3 — value writes ──────────────────────────────────────────────────
+
+test("adt_debug_set_variable POSTs setVariableValue with the value as body", async () => {
+  const { ctx, calls } = makeCtx([{ match: (c) => c.query?.method === "setVariableValue", reply: { text: "<ok/>" } }]);
+  const h = register(ctx);
+  await h.adt_debug_set_variable({ name: "lv_total", value: "99" });
+  assert.equal(calls[0].method, "POST");
+  assert.equal(calls[0].query.variableName, "lv_total");
+  assert.equal(calls[0].body, "99");
+});
+
+test("adt_debug_set_variable is refused under read-only", async () => {
+  const { ctx, calls } = makeCtx([{ match: () => true, reply: { text: "<ok/>" } }], { profile: { user: "DEV", readOnly: true } });
+  const h = register(ctx);
+  const r = await h.adt_debug_set_variable({ name: "x", value: "1" });
+  assert.match(r.content[0].text, /read-only/i);
+  assert.equal(calls.length, 0);
+});
+
+test("adt_debug_set_watchpoint sends variableName and is read-only gated", async () => {
+  const wpXml = '<dbg:watchpoints xmlns:dbg="http://www.sap.com/adt/debugger"><dbg:watchpoint id="WP-1" variableName="LV_X"/></dbg:watchpoints>';
+  const { ctx, calls } = makeCtx([{ match: (c) => c.path.endsWith("/watchpoints"), reply: { text: wpXml } }]);
+  const h = register(ctx);
+  const r = await h.adt_debug_set_watchpoint({ variableName: "lv_x", condition: "lv_x > 10" });
+  const payload = JSON.parse(r.content[0].text);
+  assert.equal(calls[0].query.variableName, "lv_x");
+  assert.equal(calls[0].query.condition, "lv_x > 10");
+  assert.equal(payload.watchpoints[0].id, "WP-1");
+
+  const ro = makeCtx([{ match: () => true, reply: { text: wpXml } }], { profile: { user: "DEV", readOnly: true } });
+  const r2 = await register(ro.ctx).adt_debug_set_watchpoint({ variableName: "x" });
+  assert.match(r2.content[0].text, /read-only/i);
+  assert.equal(ro.calls.length, 0);
+});

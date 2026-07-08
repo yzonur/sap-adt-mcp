@@ -43,7 +43,7 @@ prompts** that turn the tool surface into outcome-shaped slash commands
 | Cross-system | `adt_compare_source`, `adt_transport_diff` |
 | Transports | `adt_list_transports`, `adt_get_transport`, `adt_create_transport`, `adt_release_transport` |
 | Runtime errors | `adt_list_dumps`, `adt_get_dump` |
-| Debugger | `adt_debug_set_breakpoint`, `adt_debug_delete_breakpoint`, `adt_debug_listen`, `adt_debug_stack`, `adt_debug_variables`, `adt_debug_stop` |
+| Debugger | `adt_debug_set_breakpoint`, `adt_debug_delete_breakpoint`, `adt_debug_listen`, `adt_debug_stack`, `adt_debug_variables`, `adt_debug_step`, `adt_debug_goto_stack`, `adt_debug_set_variable`, `adt_debug_set_watchpoint`, `adt_debug_delete_watchpoint`, `adt_debug_stop` |
 | Data | `adt_read_table` |
 | Generation | `adt_rap_scaffold` |
 | Experimental¹ | `adt_get_note`, `adt_check_note_status`, `adt_implement_note`, `adt_list_locks`, `adt_schedule_job`, `adt_read_spool` |
@@ -355,9 +355,10 @@ or rejecting credentials. Run this first when troubleshooting.
 
 ### Debugger
 
-External ABAP debugger (Phase 1 — inspection). Set a breakpoint, wait for a
-session to hit it, then read the stack and variables. Requires debug
-authorization on the backend; minimum NW 7.31 SP04 + Kernel 7.21 (fine on S/4).
+External ABAP debugger over ADT's `/sap/bc/adt/debugger/*` API. Set a breakpoint,
+wait for a session to hit it, then inspect the stack/variables, step through, and
+(guarded) change values. Requires debug authorization on the backend; minimum
+NW 7.31 SP04 + Kernel 7.21 (fine on S/4).
 
 | Tool | Purpose | Notes |
 | --- | --- | --- |
@@ -366,6 +367,10 @@ authorization on the backend; minimum NW 7.31 SP04 + Kernel 7.21 (fine on S/4).
 | `adt_debug_listen` | Bounded wait for a debuggee to hit a breakpoint. | Returns `{ caught: true, debuggee, … }` and auto-attaches, or `{ caught: false }` on timeout (default 30 s, capped 55 s) — just call again. One listener per process. |
 | `adt_debug_stack` | Call stack of the attached debuggee. | |
 | `adt_debug_variables` | Read variable values. | `names: ['sy-subrc','lv_total']`; omit for the scope roots. |
+| `adt_debug_step` | Advance execution. **WRITE.** | `kind`: `into` / `over` / `return` / `continue` / `runToLine` / `jumpToLine` (need `uri`) / `terminate`. |
+| `adt_debug_goto_stack` | Move the active stack frame. **WRITE.** | `stackUri` (from the stack) or 0-based `position`. |
+| `adt_debug_set_variable` | Set a variable's value. **WRITE.** | `name` + `value`. Changes live session state. |
+| `adt_debug_set_watchpoint` / `adt_debug_delete_watchpoint` | Break when a variable changes. **WRITE.** | Best-effort — the watchpoint contract has no reference impl; check `raw` on a live run. |
 | `adt_debug_stop` | End the session: delete the listener + all breakpoints it set. | Call when done so nothing dangles on the system. |
 
 Typical flow:
@@ -376,13 +381,15 @@ Typical flow:
 3.  adt_debug_listen {}          → caught:false? call again. caught:true → attached
 4.  adt_debug_stack {}           → where execution paused
 5.  adt_debug_variables { names: ["sy-subrc", "lv_total"] }
-6.  adt_debug_stop {}            → cleanup
+6.  adt_debug_step { kind: "over" }   → advance; or set_variable / continue
+7.  adt_debug_stop {}            → cleanup
 ```
 
-Debugging **another user's** session (`requestUser`) is off by default; enable it
-per system with `"debug": { "allowRequestUser": true }` (needs backend debug
-authorization). Flow-control and value writes (step, set-variable) are a later
-phase; Phase 1 is inspection only.
+**Read-only mode:** inspection (breakpoints, listen, stack, variables) is allowed;
+the **WRITE** tools above (step, goto-stack, set-variable, watchpoints) are refused
+under `readOnly: true`. Debugging **another user's** session (`requestUser`) is off
+by default; enable it per system with `"debug": { "allowRequestUser": true }`
+(needs backend debug authorization).
 
 ### Data
 

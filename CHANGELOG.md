@@ -6,6 +6,26 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.54]
+
+### Added
+
+- **Debugger Phase 2 + 3 — flow control & value writes (#88).** Completes the
+  debugger tool set on top of Phase 1's inspection tools:
+  - `adt_debug_step` — advance the debuggee: `into` / `over` / `return` /
+    `continue` / `runToLine` / `jumpToLine` / `terminate`.
+  - `adt_debug_goto_stack` — move the active stack frame (by `stackUri` or
+    `position`).
+  - `adt_debug_set_variable` — set a variable's value in the live session.
+  - `adt_debug_set_watchpoint` / `adt_debug_delete_watchpoint` — variable-change
+    watchpoints (best-effort: no reference implementation for the contract, so
+    the raw ADT XML is returned for validation).
+
+  All five are WRITE operations and are refused under `readOnly: true` (gated at
+  the tool level, since the shared `/sap/bc/adt/debugger` path can't be
+  distinguished from the inspection POSTs by path alone). step / goto-stack /
+  set-variable shapes are verified against abap-adt-api's `src/api/debugger.ts`.
+
 ## [0.8.53]
 
 ### Added

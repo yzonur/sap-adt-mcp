@@ -81,6 +81,31 @@ function debugError(xml) {
   return decode(msg?.[1]?.trim() || "debugger returned an exception");
 }
 
+// Debug flow-control / value-write actions change a live session, so they are
+// WRITE operations. The read-only POST allowlist can't distinguish them from the
+// inspection POSTs on the same base path (the ?method= discriminator is invisible
+// to path matching), so they gate here at the tool level instead.
+function refuseIfReadOnly(profile, tool) {
+  if (profile.readOnly) {
+    return (
+      `${tool}: refused — system is read-only. This changes a live debug session ` +
+      `(flow control / variable value); set readOnly:false for this system to allow it.`
+    );
+  }
+  return null;
+}
+
+// Friendly step kind → ADT DebugStepType.
+const STEP_KINDS = {
+  into: "stepInto",
+  over: "stepOver",
+  return: "stepReturn",
+  continue: "stepContinue",
+  runToLine: "stepRunToLine",
+  jumpToLine: "stepJumpToLine",
+  terminate: "terminateDebuggee",
+};
+
 // --- request-user gating -----------------------------------------------------
 
 // Resolve the SAP user whose session to debug. Defaults to the connection user;
@@ -186,6 +211,78 @@ export const tools = [
         system: { type: "string", description: SYSTEM_HINT },
         requestUser: { type: "string", description: "Defaults to the connection user." },
       },
+    },
+  },
+  {
+    name: "adt_debug_step",
+    description:
+      "Advance the attached debuggee (Phase 2, flow control). `kind`: into (step into), over (step over), return (step out), continue (resume until the next breakpoint), runToLine / jumpToLine (need `uri`), terminate (stop the debuggee). WRITE — refused under read-only mode. Returns the new state (position, reached breakpoints) plus raw XML.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        system: { type: "string", description: SYSTEM_HINT },
+        kind: {
+          type: "string",
+          enum: ["into", "over", "return", "continue", "runToLine", "jumpToLine", "terminate"],
+          description: "The step action.",
+        },
+        uri: { type: "string", description: "Target stack/source URI — required for runToLine and jumpToLine." },
+      },
+      required: ["kind"],
+    },
+  },
+  {
+    name: "adt_debug_goto_stack",
+    description:
+      "Move the active stack frame of the attached debuggee (Phase 2). Pass either `stackUri` (a /sap/bc/adt/debugger/stack/type/<t>/position/<n> URI from adt_debug_stack) or a 0-based `position`. WRITE — refused under read-only mode.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        system: { type: "string", description: SYSTEM_HINT },
+        stackUri: { type: "string", description: "A stack-entry URI from adt_debug_stack." },
+        position: { type: "integer", description: "0-based stack position (alternative to stackUri)." },
+      },
+    },
+  },
+  {
+    name: "adt_debug_set_variable",
+    description:
+      "Set a variable's value in the attached debuggee (Phase 3). WRITE — refused under read-only mode. Changes live session state; use with care on shared/production-adjacent systems.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        system: { type: "string", description: SYSTEM_HINT },
+        name: { type: "string", description: "Variable name/id in the current scope (e.g. 'lv_total', 'sy-subrc')." },
+        value: { type: "string", description: "New value (as text; ABAP-typed on the backend)." },
+      },
+      required: ["name", "value"],
+    },
+  },
+  {
+    name: "adt_debug_set_watchpoint",
+    description:
+      "Set a debugger watchpoint that breaks when a variable changes (or a condition holds). Phase 3, WRITE — refused under read-only mode. NOTE: the watchpoint request/response contract has no reference implementation and is best-effort until validated on a live system; check `raw`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        system: { type: "string", description: SYSTEM_HINT },
+        variableName: { type: "string", description: "Variable to watch." },
+        condition: { type: "string", description: "Optional condition; break only when it holds." },
+        requestUser: { type: "string", description: "Defaults to the connection user (needs debug.allowRequestUser to differ)." },
+      },
+      required: ["variableName"],
+    },
+  },
+  {
+    name: "adt_debug_delete_watchpoint",
+    description: "Delete a watchpoint by id (from adt_debug_set_watchpoint). Phase 3, WRITE — refused under read-only mode. Best-effort until validated live.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        system: { type: "string", description: SYSTEM_HINT },
+        id: { type: "string", description: "Watchpoint id." },
+      },
+      required: ["id"],
     },
   },
 ];
@@ -416,6 +513,137 @@ export function register({ getClient }) {
       SESSION.breakpoints = [];
       SESSION.attached = null;
       return jsonResult({ system: sys, status: "stopped", listenerDeleted: true, breakpointsDeleted: removed });
+    },
+
+    // ── Phase 2 — flow control (WRITE) ──────────────────────────────────────
+    adt_debug_step: async (args) => {
+      const { client, name: sys, profile } = getClient(args.system);
+      const refused = refuseIfReadOnly(profile, "adt_debug_step");
+      if (refused) return textResult(refused, true);
+
+      const method = STEP_KINDS[args.kind];
+      if (!method) {
+        return textResult(`adt_debug_step: unknown kind ${JSON.stringify(args.kind)}. Use one of: ${Object.keys(STEP_KINDS).join(", ")}.`, true);
+      }
+      if ((args.kind === "runToLine" || args.kind === "jumpToLine") && !args.uri) {
+        return textResult(`adt_debug_step: kind '${args.kind}' requires \`uri\` (the target line/stack URI).`, true);
+      }
+
+      const res = await client.request({
+        method: "POST",
+        path: DEBUGGER,
+        query: { method, uri: args.uri },
+        accept: "application/xml",
+      });
+      const text = await res.text();
+      if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"), { stage: "step" });
+      if (args.kind === "terminate") SESSION.attached = null;
+      const step = attrsOf("step", text)[0] ?? {};
+      const reached = attrsOf("breakpoint", text);
+      const actions = attrsOf("action", text);
+      return jsonResult({ system: sys, kind: args.kind, step, reachedBreakpoints: reached, actions, raw: text });
+    },
+
+    adt_debug_goto_stack: async (args) => {
+      const { client, name: sys, profile } = getClient(args.system);
+      const refused = refuseIfReadOnly(profile, "adt_debug_goto_stack");
+      if (refused) return textResult(refused, true);
+
+      if (typeof args.stackUri === "string" && args.stackUri) {
+        if (!/^\/sap\/bc\/adt\/debugger\/stack\/type\/\w+\/position\/\d+$/.test(args.stackUri)) {
+          return textResult(`adt_debug_goto_stack: stackUri must look like /sap/bc/adt/debugger/stack/type/<t>/position/<n> (got ${JSON.stringify(args.stackUri)}).`, true);
+        }
+        const res = await client.request({ method: "PUT", path: args.stackUri, accept: "application/xml" });
+        const text = await res.text();
+        if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"), { stage: "goto-stack" });
+        return jsonResult({ system: sys, stackUri: args.stackUri, status: "moved" });
+      }
+      if (Number.isInteger(args.position)) {
+        const res = await client.request({
+          method: "POST",
+          path: DEBUGGER,
+          query: { method: "setStackPosition", position: args.position },
+          accept: "application/xml",
+        });
+        const text = await res.text();
+        if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"), { stage: "goto-stack" });
+        return jsonResult({ system: sys, position: args.position, status: "moved" });
+      }
+      return textResult("adt_debug_goto_stack: pass either `stackUri` or `position`.", true);
+    },
+
+    // ── Phase 3 — guarded value writes (WRITE) ──────────────────────────────
+    adt_debug_set_variable: async (args) => {
+      const { client, name: sys, profile } = getClient(args.system);
+      const refused = refuseIfReadOnly(profile, "adt_debug_set_variable");
+      if (refused) return textResult(refused, true);
+      if (typeof args.name !== "string" || !args.name || typeof args.value !== "string") {
+        return textResult("adt_debug_set_variable: `name` and `value` (string) are required.", true);
+      }
+      const res = await client.request({
+        method: "POST",
+        path: DEBUGGER,
+        query: { method: "setVariableValue", variableName: args.name },
+        body: args.value,
+        accept: "application/xml",
+      });
+      const text = await res.text();
+      if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"), { stage: "set-variable" });
+      return jsonResult({ system: sys, name: args.name, value: args.value, status: "set", raw: text });
+    },
+
+    adt_debug_set_watchpoint: async (args) => {
+      const { client, name: sys, profile } = getClient(args.system);
+      const refused = refuseIfReadOnly(profile, "adt_debug_set_watchpoint");
+      if (refused) return textResult(refused, true);
+      const ru = resolveRequestUser(args, profile);
+      if (ru.error) return textResult(ru.error, true);
+      if (typeof args.variableName !== "string" || !args.variableName) {
+        return textResult("adt_debug_set_watchpoint: `variableName` is required.", true);
+      }
+      // Best-effort: no reference implementation exists for the watchpoint
+      // contract, only the discovered signature (?variableName,condition). Send
+      // the session identity like breakpoints do; surface `raw` for validation.
+      const res = await client.request({
+        method: "POST",
+        path: `${DEBUGGER}/watchpoints`,
+        query: {
+          variableName: args.variableName,
+          condition: args.condition,
+          debuggingMode: "user",
+          requestUser: ru.user,
+          terminalId: SESSION.terminalId,
+          ideId: SESSION.ideId,
+        },
+        accept: "application/xml",
+      });
+      const text = await res.text();
+      if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"), { stage: "set-watchpoint" });
+      const wp = attrsOf("watchpoint", text);
+      return jsonResult({
+        system: sys,
+        variableName: args.variableName,
+        watchpoints: wp,
+        note: "Best-effort: watchpoint contract unverified — confirm against `raw`.",
+        raw: text,
+      });
+    },
+
+    adt_debug_delete_watchpoint: async (args) => {
+      const { client, name: sys, profile } = getClient(args.system);
+      const refused = refuseIfReadOnly(profile, "adt_debug_delete_watchpoint");
+      if (refused) return textResult(refused, true);
+      if (typeof args.id !== "string" || !args.id) {
+        return textResult("adt_debug_delete_watchpoint: `id` is required.", true);
+      }
+      const res = await client.request({
+        method: "DELETE",
+        path: `${DEBUGGER}/watchpoints/${encodeURIComponent(args.id)}`,
+        accept: "application/xml",
+      });
+      const text = await res.text();
+      if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"), { stage: "delete-watchpoint" });
+      return jsonResult({ system: sys, deleted: args.id, status: "deleted" });
     },
   };
 }
