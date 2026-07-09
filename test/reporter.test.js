@@ -379,3 +379,26 @@ test("shouldReportAdt skips adt_create_transport 500 (environmental / needs GUI,
   // A genuine 500 from a request we shaped is still reported.
   assert.equal(shouldReportAdt({ tool: "adt_activate", status: 500 }), true);
 });
+
+test("shouldReportAdt skips business/backend 500s that aren't tool defects (#89-92)", () => {
+  const { shouldReportAdt } = _internals;
+  // #91 — a named resource couldn't be read (object-side).
+  assert.equal(
+    shouldReportAdt({ tool: "adt_get_source", status: 500, type: "ExceptionResourceReadFailure", message: "Resource PROGRAM /X could not be successfully read." }),
+    false
+  );
+  // #92 — create hit an existing object.
+  assert.equal(
+    shouldReportAdt({ tool: "adt_create_object", status: 500, type: "ExceptionResourceCreationFailure", t100: { id: "XI", number: "001" }, message: "A program or include already exists with the name ZHELLO_WORLD" }),
+    false
+  );
+  // #89 — generic backend exception raised while reading a special FM.
+  assert.equal(
+    shouldReportAdt({ tool: "adt_get_source", status: 500, type: "FUNCTION", t100: { id: "SY", number: "530" }, message: "An exception was raised" }),
+    false
+  );
+  // #90 — adt_read_table 5xx is user SQL / data-side.
+  assert.equal(shouldReportAdt({ tool: "adt_read_table", status: 500, message: "internal error" }), false);
+  // Sanity: a genuine content-negotiation defect is still reported.
+  assert.equal(shouldReportAdt({ tool: "adt_get_source", status: 415, type: "ExceptionUnsupportedMediaType" }), true);
+});

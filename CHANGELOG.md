@@ -6,6 +6,24 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.55]
+
+### Changed
+
+- **Stop auto-reporting more business/backend 500s (#89–92).** Four recurring
+  `auto-adt-error` reports were user/object/system-side, not tool defects, so the
+  reporter no longer files them:
+  - `adt_create_object` "…already exists" (a create hitting an existing object;
+    #92).
+  - `adt_get_source` `ExceptionResourceReadFailure` — a specific object couldn't
+    be read on the backend, like a 404 (#91).
+  - `adt_get_source` generic backend `SY/530` "An exception was raised" while
+    reading a special/generated object (#89).
+  - `adt_read_table` 5xx — the caller's OpenSQL blowing up on the backend
+    (unknown column, etc.), not a request-shape defect (#90).
+
+  Content-negotiation defects (406/415) are still reported.
+
 ## [0.8.54]
 
 ### Added

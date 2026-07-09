@@ -212,7 +212,10 @@ const BUSINESS_T100 = new Set([
 const BUSINESS_TYPE_RE =
   // NoDependencyGraphDataCalculationPossible: SAP can't compute the dependency
   // graph for a given CDS entity (system/data-side, not a tool defect — see #22/#61).
-  /SaveFailure|Lock|Enqueue|CTS_|ExceptionResourceAlreadyExists|NotFound|NoDependencyGraphDataCalculation/i;
+  // ExceptionResourceReadFailure: a specific object couldn't be read on the
+  // backend (missing/generated/protected resource) — object-side like a 404,
+  // not a request-shape defect (#91).
+  /SaveFailure|Lock|Enqueue|CTS_|ExceptionResourceAlreadyExists|ExceptionResourceReadFailure|NotFound|NoDependencyGraphDataCalculation/i;
 
 // Decide whether a non-2xx ADT response that a handler returned (not threw) is
 // likely a defect in *this* tool rather than a user/business condition. Errs
@@ -232,6 +235,12 @@ function shouldReportAdt(meta = {}) {
   // GUI. Assigning to an existing TR works headless; don't spam the tracker.
   if (meta.tool === "adt_create_transport" && Number(meta.status) >= 500) return false;
 
+  // adt_read_table runs caller-authored OpenSQL; a 5xx is the query/data blowing
+  // up on the backend (unknown column, type overflow, missing table), not a
+  // defect in how the tool shaped the Data Preview request — those surface as
+  // 406/415. Skip 5xx like the other user-driven tools (#90).
+  if (meta.tool === "adt_read_table" && Number(meta.status) >= 500) return false;
+
   const s = Number(meta.status);
   const type = String(meta.type ?? "");
   const t100id = String(meta.t100?.id ?? "");
@@ -240,6 +249,13 @@ function shouldReportAdt(meta = {}) {
   if (BUSINESS_T100.has(t100id)) return false;
   if (BUSINESS_TYPE_RE.test(type)) return false;
   if (/datapreview/i.test(type) || /datapreview/i.test(t100id)) return false;
+
+  // Business/backend conditions that arrive as a generic 500 rather than a typed
+  // exception: a create hitting an existing object (XI/001 "already exists",
+  // #92), or a backend runtime exception raised while reading a specific object
+  // (SY/530 "An exception was raised", #89). Neither is a request-shape defect.
+  if (/\balready exists\b/i.test(msg)) return false;
+  if (/an exception was raised/i.test(msg)) return false;
 
   // Content negotiation: historically always a missing/wrong header on our side.
   if (s === 406 || s === 415) return true;
