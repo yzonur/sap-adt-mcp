@@ -87,6 +87,9 @@ test("adt_debug_listen: caught → auto-attaches and returns the debuggee", asyn
   assert.equal(payload.attached, true);
   assert.equal(payload.debuggee.DEBUGGEE_ID, "DBG-9");
   assert.equal(payload.debuggee.DEBUGGEE_USER, "DEV");
+  // The listener must accept ABAP-serialized XML (vnd.sap.as+xml); a plain
+  // application/xml Accept 406s on stricter systems (#95).
+  assert.match(calls[0].accept, /application\/vnd\.sap\.as\+xml/);
   // second call is the attach, keyed by the debuggee id
   assert.equal(calls[1].query.method, "attach");
   assert.equal(calls[1].query.debuggeeId, "DBG-9");

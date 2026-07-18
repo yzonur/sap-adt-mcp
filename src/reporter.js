@@ -245,10 +245,19 @@ function shouldReportAdt(meta = {}) {
   const type = String(meta.type ?? "");
   const t100id = String(meta.t100?.id ?? "");
   const msg = String(meta.message ?? "");
+  const ns = String(meta.namespace ?? "");
 
   if (BUSINESS_T100.has(t100id)) return false;
   if (BUSINESS_TYPE_RE.test(type)) return false;
   if (/datapreview/i.test(type) || /datapreview/i.test(t100id)) return false;
+
+  // RIS (repository information system) engine errors — where-used / references
+  // conversion — are object/RIS-side, not a request-shape defect. The where_used
+  // request body is fixed and tested; when RIS can't convert a particular
+  // object's reference (e.g. where-used on a message class → RIS_MESSAGES/014
+  // "Error while converting object references", com.sap.adt.ris, #93) that is a
+  // limitation of that object/RIS, like NoDependencyGraphDataCalculation for CDS.
+  if (/com\.sap\.adt\.ris/i.test(ns) && s >= 500) return false;
 
   // Business/backend conditions that arrive as a generic 500 rather than a typed
   // exception: a create hitting an existing object (XI/001 "already exists",
@@ -268,6 +277,14 @@ function shouldReportAdt(meta = {}) {
       msg + " " + type
     );
   }
+  // A 5xx with no ADT error envelope at all (no exception type, no T100 key, no
+  // message) is a bare backend dump — typically an ABAP short dump or GUI-context
+  // failure raised by the backend over a caller-chosen object (e.g. activating an
+  // include mis-typed as a program, #96). It carries no evidence of a
+  // request-shape defect on our side, which is the only thing this classifier can
+  // act on, so don't auto-file it. A 5xx that DOES carry a type/message still
+  // reports (that's a dispatcher/parser blow-up on a request we shaped).
+  if (s >= 500 && !type && !t100id && !msg) return false;
   // Server-side dispatcher/parser blow-ups on a request we shaped.
   if (s >= 500) return true;
   return false;

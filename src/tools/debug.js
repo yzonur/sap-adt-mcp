@@ -392,7 +392,14 @@ export function register({ getClient }) {
           method: "POST",
           path: `${DEBUGGER}/listeners`,
           query,
-          accept: "application/xml",
+          // The listener returns the trapped debuggee as ABAP-serialized XML
+          // (STPDA_DEBUGGEE), whose media type is application/vnd.sap.as+xml —
+          // the same family the debugger's getVariables endpoint uses. Some
+          // systems reject a plain application/xml Accept here with 406
+          // ExceptionResourceNotAcceptable ("Accepted content types:
+          // application/vnd.sap.as+xml", #95). Offer the precise type first and
+          // keep application/xml as a fallback for lenient servers.
+          accept: "application/vnd.sap.as+xml, application/xml",
           timeoutMs: timeout,
         });
         text = await res.text();
