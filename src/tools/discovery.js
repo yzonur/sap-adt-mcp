@@ -9,6 +9,22 @@ import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
 // references for a central object; the caller can raise it per call.
 const WHERE_USED_DEFAULT_MAX = 200;
 
+// A typo'd or invented `objectType` ("BADII", "BADI"…) comes back from the
+// search backend as 406 ExceptionResourceNotAcceptable / SADT_RESOURCE-037,
+// "The message content is not acceptable" (#117). Despite the wording and the
+// status, this is the backend rejecting the *filter value*, not content
+// negotiation: it reproduces unchanged with `Accept: */*`. The message is too
+// generic to key a global hint on, so the caller — which knows what it sent —
+// explains it here.
+function objectTypeRejectedHint(objectType) {
+  return (
+    `The search backend rejected objectType '${objectType}'. This 406 is filter-value ` +
+    "validation, not content negotiation — the value is not a repository type code the " +
+    "backend knows. Use a TADIR-style code such as 'CLAS/OC', 'PROG/P' or 'DDLS/DF', or " +
+    "omit objectType to search across all types."
+  );
+}
+
 function defaultDescendPrefix(pkg) {
   if (pkg.startsWith("/")) {
     const second = pkg.indexOf("/", 1);
@@ -276,7 +292,13 @@ export function register({ getClient }) {
         res = await tryRequest({});
         text = await res.text();
       }
-      if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
+      if (!res.ok) {
+        const extra =
+          res.status === 406 && args.objectType
+            ? { hint: objectTypeRejectedHint(args.objectType) }
+            : {};
+        return errorResult(sys, res.status, text, res.headers.get("content-type"), extra);
+      }
       const refs = parseObjectReferences(text);
       return jsonResult({
         system: sys,

@@ -381,3 +381,58 @@ test("adt_delete_object: `name` instead of `object` returns a clean error, not a
   assert.match(r.content[0].text, /you passed `name`|Object name is required/);
   assert.equal(calls.length, 0, "must not lock/DELETE when the URI can't be built");
 });
+
+// ─── Bug: adt_search_objects 406 gave no clue it was the objectType (#117) ────
+
+const SEARCH_406 = `<?xml version="1.0" encoding="utf-8"?><exc:exception xmlns:exc="http://www.sap.com/abapxml/types/communicationframework"><namespace id="com.sap.adt"/><type id="ExceptionResourceNotAcceptable"/><message lang="EN">The message content is not acceptable</message><localizedMessage lang="EN">The message content is not acceptable</localizedMessage><properties><entry key="T100">SADT_RESOURCE/037</entry></properties></exc:exception>`;
+
+function search406Ctx() {
+  return makeCtx({
+    responses: [
+      {
+        ok: false,
+        status: 406,
+        headers: { get: () => "application/xml" },
+        text: async () => SEARCH_406,
+      },
+    ],
+  });
+}
+
+test("adt_search_objects: a 406 on an objectType filter explains the filter value (#117)", async () => {
+  const { ctx } = search406Ctx();
+  const h = registerDiscovery(ctx);
+  const r = await h.adt_search_objects({ query: "*", objectType: "BADII", maxResults: 1 });
+  assert.equal(r.isError, true);
+  const payload = JSON.parse(r.content[0].text);
+  assert.equal(payload.status, 406);
+  assert.match(payload.hint, /objectType 'BADII'/);
+  assert.match(payload.hint, /not content negotiation/);
+  assert.match(payload.hint, /CLAS\/OC/);
+});
+
+test("adt_search_objects: a 406 without an objectType gets no filter hint (#117)", async () => {
+  const { ctx } = search406Ctx();
+  const h = registerDiscovery(ctx);
+  const r = await h.adt_search_objects({ query: "*" });
+  assert.equal(r.isError, true);
+  const payload = JSON.parse(r.content[0].text);
+  assert.equal(payload.hint, undefined, "no objectType was sent, so nothing to blame");
+});
+
+test("adt_search_objects: a non-406 failure keeps the plain error shape (#117)", async () => {
+  const { ctx } = makeCtx({
+    responses: [
+      {
+        ok: false,
+        status: 500,
+        headers: { get: () => "application/xml" },
+        text: async () => "<err/>",
+      },
+    ],
+  });
+  const h = registerDiscovery(ctx);
+  const r = await h.adt_search_objects({ query: "*", objectType: "BADII" });
+  assert.equal(r.isError, true);
+  assert.equal(JSON.parse(r.content[0].text).hint, undefined);
+});

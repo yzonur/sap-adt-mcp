@@ -6,6 +6,18 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`adt_search_objects` 406 said nothing about the real cause (#117).** An
+  `objectType` the backend does not know (e.g. `BADII`) is rejected with 406
+  `ExceptionResourceNotAcceptable` / `SADT_RESOURCE-037`, "The message content is
+  not acceptable" — which reads like content negotiation but is filter-value
+  validation: it reproduces unchanged with `Accept: */*`. The error now carries a
+  hint naming the rejected value and pointing at TADIR-style codes, so the caller
+  stops chasing the `Accept` header. `errorResult` gained a call-site `hint`
+  fallback for messages too generic to key a global rule on; a matching global
+  hint still wins.
+
 ## [0.8.58]
 
 Clearing the open ADT error reports. Two of them were settled by probing a live

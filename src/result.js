@@ -9,16 +9,20 @@ export function jsonResult(value, isError = false) {
 }
 
 export function errorResult(system, status, body, contentType, extra = {}) {
+  // `extra.hint` is a call-site fallback: a tool that knows *which* argument it
+  // just sent can explain a backend message too generic to key a global rule on.
+  // A matching global hint still wins — it is derived from the backend's own text.
+  const { hint: callerHint, ...rest } = extra;
   const parsed = parseAdtError(body, contentType);
   // A caller-side hint when the backend message describes something we asked
   // for wrongly (missing transport / stale lock handle) rather than a fault.
-  const hint = hintForAdtError(parsed);
+  const hint = hintForAdtError(parsed) ?? callerHint;
   const result = jsonResult(
     {
       system,
       status,
       ok: false,
-      ...extra,
+      ...rest,
       error: parsed ?? { raw: typeof body === "string" ? body.slice(0, 4000) : body },
       ...(hint ? { hint } : {}),
     },
@@ -35,7 +39,7 @@ export function errorResult(system, status, body, contentType, extra = {}) {
       namespace: parsed?.namespace,
       t100: parsed?.properties?.t100,
       message: parsed?.message ?? parsed?.localizedMessage,
-      stage: extra.stage,
+      stage: rest.stage,
     },
     enumerable: false,
   });
