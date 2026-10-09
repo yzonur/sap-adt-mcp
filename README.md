@@ -26,14 +26,14 @@ developer in Eclipse.
 
 ## What's in the box
 
-**27 high-level tools** wrapped around the most common ADT endpoints, plus a
+**50+ high-level tools** wrapped around the most common ADT endpoints, plus a
 generic escape hatch for anything else, **plus 5 user-invokable Clean Core
 prompts** that turn the tool surface into outcome-shaped slash commands
 (see [Clean Core prompts](#clean-core-prompts) below).
 
 | Category | Tools |
 | --- | --- |
-| Connection | `adt_list_systems`, `adt_ping` |
+| Connection | `adt_list_systems`, `adt_ping`, `adt_system_info` |
 | Source CRUD | `adt_get_source`, `adt_set_source` |
 | Quality | `adt_syntax_check`, `adt_pretty_print`, `adt_run_unit_tests`, `adt_run_atc`, `adt_run_atc_package`, `adt_run_atc_transport` |
 | Lifecycle | `adt_create_object`, `adt_delete_object`, `adt_activate`, `adt_lock`, `adt_unlock`, `adt_list_inactive_objects` |
@@ -41,10 +41,10 @@ prompts** that turn the tool surface into outcome-shaped slash commands
 | Discovery | `adt_browse_package`, `adt_list_packages`, `adt_search_objects`, `adt_grep_source`, `adt_where_used` |
 | CDS | `adt_cds_data_preview`, `adt_cds_dependencies`, `adt_list_released_apis` |
 | Cross-system | `adt_compare_source`, `adt_transport_diff` |
-| Transports | `adt_list_transports`, `adt_get_transport`, `adt_create_transport`, `adt_release_transport` |
+| Transports | `adt_list_transports`, `adt_get_transport`, `adt_create_transport`, `adt_release_transport`, `adt_transport_queue` |
 | Runtime errors | `adt_list_dumps`, `adt_get_dump` |
 | Debugger | `adt_debug_set_breakpoint`, `adt_debug_delete_breakpoint`, `adt_debug_listen`, `adt_debug_stack`, `adt_debug_variables`, `adt_debug_step`, `adt_debug_goto_stack`, `adt_debug_set_variable`, `adt_debug_set_watchpoint`, `adt_debug_delete_watchpoint`, `adt_debug_stop` |
-| Data | `adt_read_table` |
+| Data | `adt_read_table`, `adt_value_help` |
 | Generation | `adt_rap_scaffold` |
 | Experimental¹ | `adt_get_note`, `adt_check_note_status`, `adt_implement_note`, `adt_list_locks`, `adt_schedule_job`, `adt_read_spool` |
 | Escape hatch | `adt_request` |
@@ -183,6 +183,22 @@ Configure or disable:
 
 …or set `SAP_ADT_MCP_AUDIT=0` (also accepts `false`/`no`/`off`).
 
+### Result cache
+
+Agents repeat the same discovery calls while they reason. Results of the
+read-only tools `adt_search_objects`, `adt_browse_package`, `adt_list_packages`,
+`adt_where_used`, `adt_system_info` and `adt_value_help` are cached in memory
+for 60 seconds per system and argument set. Any write this server performs
+drops the whole cache, so you never read back a stale result of your own change;
+changes made elsewhere (SAP GUI, Eclipse) can be up to one TTL old. A cached
+result carries `_meta["sap-adt-mcp/cache"] = { hit: true, ageMs }`.
+
+```json
+{ "cache": { "ttlMs": 120000 } }
+```
+
+`"ttlMs": 0` (or `SAP_ADT_MCP_CACHE_TTL_MS=0`) turns it off.
+
 ### Automatic error reporting
 
 The server sends small, **redacted** reports to the maintainer so defects get
@@ -297,8 +313,8 @@ or rejecting credentials. Run this first when troubleshooting.
 
 | Tool | Purpose | Notes |
 | --- | --- | --- |
-| `adt_browse_package` | One level of package contents. | |
-| `adt_list_packages` | Recursive walk from a root. | Has `prefix` (only descend into matching subpackages) and `maxPackages` safety cap (default 200). |
+| `adt_browse_package` | One level of package contents. | Returns `counts` by type. Past 500 objects only the first 500 entries come back (`truncated: true`); `full: true` returns all. |
+| `adt_list_packages` | Recursive walk from a root. | Has `prefix` (only descend into matching subpackages) and `maxPackages` safety cap (default 200). Always returns `totals` by type; when the tree holds more than 500 objects the per-package `entries` are left out (counts stay) unless `full: true`. |
 | `adt_search_objects` | Quick-search by name pattern. | `*` wildcard. Returns parsed `{ name, type, description, packageName, uri }` records. |
 | `adt_where_used` | Where-used list. | Same parsed record shape. Capped at `maxResults` (default 200); the response carries the backend's own `numberOfResults` plus `truncated` when the list was cut. |
 
@@ -385,6 +401,8 @@ by default; enable it per system with `"debug": { "allowRequestUser": true }`
 | Tool | Purpose | Notes |
 | --- | --- | --- |
 | `adt_read_table` | Run an OpenSQL SELECT via the ADT Data Preview API. | SE16-style table reads. SELECT-only — INSERT/UPDATE/DELETE rejected client-side; the SAP endpoint enforces server-side too. `maxRows` capped at 5000 (default 100). Requires NetWeaver 7.55+ / S/4HANA. |
+| `adt_system_info` | Which system is this? | Product (S/4HANA version, ECC or plain NetWeaver), SAP_BASIS release + SP level, and whether ABAP Cloud is available (SAP_BASIS ≥ 7.57), read from table CVERS. `includeComponents: true` lists every installed component. Same Data Preview baseline as `adt_read_table`. |
+| `adt_value_help` | F4-style value help for a domain, data element or `table` + `field`. | Domain fixed values with texts (DD07L/DD07T), else the check / value table joined with its text table in the requested language (`language`: ISO `EN`/`TR` or SAP key; defaults to the profile language). `includeCheckTable` reads the check table even when fixed values exist. Search helps are not evaluated. Same Data Preview baseline as `adt_read_table`. |
 
 ### Transports
 
@@ -394,6 +412,7 @@ by default; enable it per system with `"debug": { "allowRequestUser": true }`
 | `adt_get_transport` | TR header + objects. | |
 | `adt_create_transport` | Create a new TR. | Refused under `readOnly: true`. Endpoint shape varies — see Caveats. |
 | `adt_release_transport` | Release a TR. | Refused under `readOnly: true`. |
+| `adt_transport_queue` | Where is a TR right now? | Reads E070 (status, owner, target) and TPALOG (tp steps + return codes) on every system in `systems` (e.g. `["DEV","QAS","PRD"]`) and reports per target: `exported`, `in-import-queue`, `imported`, `imported-with-errors`, `import-aborted`. A task resolves to its request. One unreachable system is reported, not fatal. The TMS buffer file is not reachable over ADT, so `in-import-queue` comes from the logged forward step. |
 
 ### Escape hatch
 

@@ -1,6 +1,12 @@
 import { escapeXml } from "../xml.js";
 import { errorResult, jsonResult, textResult } from "../result.js";
+import { runFreestyle, sqlName } from "../data-preview.js";
+import { summarizeTpalog, describeHeader } from "../transport-queue.js";
 import { SYSTEM_HINT } from "./_shared.js";
+
+// tp logs a dozen-plus steps per request per system; a few hundred covers even a
+// long DEV → QAS → PRD history with re-imports.
+const TPALOG_MAX_ROWS = 500;
 
 export const tools = [
   {
@@ -69,6 +75,24 @@ export const tools = [
       properties: {
         system: { type: "string", description: SYSTEM_HINT },
         transport: { type: "string", description: "Transport request ID." },
+      },
+      required: ["transport"],
+    },
+  },
+  {
+    name: "adt_transport_queue",
+    description:
+      "Where is a transport request right now? Reads the request header (E070: status, owner, target) and the tp action log (TPALOG: export, forward into a follow-on import buffer, import steps with return codes) on one or more configured systems, and summarizes per target system: exported, in-import-queue, imported, imported-with-errors or import-aborted. Pass `systems` with every system of the route (e.g. ['DEV','QAS','PRD']) for the full picture — each system only logs the tp steps that touched it. Read-only (Data Preview SELECTs; NetWeaver 7.55+ / S/4HANA). The TMS buffer file itself is not reachable over ADT, so 'in-import-queue' is inferred from the forward step.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        system: { type: "string", description: SYSTEM_HINT },
+        transport: { type: "string", description: "Transport request ID, e.g. 'E4DK900123'. A task resolves to its parent request." },
+        systems: {
+          type: "array",
+          items: { type: "string" },
+          description: "Configured system names to read, in route order. Default: just `system` (or the default system).",
+        },
       },
       required: ["transport"],
     },
@@ -166,6 +190,76 @@ export function register({ getClient }) {
       const text = await res.text();
       if (!res.ok) return errorResult(sys, res.status, text, res.headers.get("content-type"));
       return jsonResult({ system: sys, transport: id, result: text });
+    },
+
+    adt_transport_queue: async (args) => {
+      const id = sqlName(args.transport, 20);
+      if (!id) {
+        return textResult(
+          "adt_transport_queue: `transport` must be a transport request ID such as 'E4DK900123'.",
+          true
+        );
+      }
+      const names =
+        Array.isArray(args.systems) && args.systems.length > 0 ? [...new Set(args.systems)] : [args.system];
+
+      const results = [];
+      for (const name of names) {
+        let ctx;
+        try {
+          ctx = getClient(name);
+        } catch (err) {
+          results.push({ system: name ?? null, error: err.message });
+          continue;
+        }
+        const { client, name: sys } = ctx;
+        try {
+          const h = await runFreestyle(
+            client,
+            `SELECT trkorr, trfunction, trstatus, tarsystem, as4user, as4date, as4time, strkorr FROM e070 WHERE trkorr = '${id}'`,
+            1
+          );
+          if (!h.ok) {
+            results.push({ system: sys, error: `E070 read failed (HTTP ${h.status})`, stage: "e070" });
+            continue;
+          }
+          const header = describeHeader(h.rows[0]);
+          // tp works on requests, never tasks — follow a task up to its request.
+          const request = sqlName(header?.parent ?? "", 20) ?? id;
+
+          let description;
+          const t = await runFreestyle(client, `SELECT as4text FROM e07t WHERE trkorr = '${request}'`, 1);
+          if (t.ok) description = t.rows[0]?.AS4TEXT || undefined;
+
+          const log = await runFreestyle(
+            client,
+            `SELECT trkorr, tarsystem, trcli, trstep, retcode, trtime, truser FROM tpalog WHERE trkorr = '${request}'`,
+            TPALOG_MAX_ROWS
+          );
+          if (!log.ok) {
+            results.push({ system: sys, header, error: `TPALOG read failed (HTTP ${log.status})`, stage: "tpalog" });
+            continue;
+          }
+          results.push({
+            system: sys,
+            knownHere: Boolean(header) || log.rows.length > 0,
+            header,
+            ...(request !== id ? { request } : {}),
+            ...(description ? { description } : {}),
+            targets: summarizeTpalog(log.rows),
+            ...(log.totalRows > log.rows.length ? { logTruncated: true } : {}),
+          });
+        } catch (err) {
+          results.push({ system: sys, error: err.message });
+        }
+      }
+
+      return jsonResult({
+        transport: id,
+        systems: results,
+        note:
+          "Each system's TPALOG only holds the tp steps that touched that system. 'in-import-queue' means a forward into that system's buffer is logged but no import step is — confirm by including that system in `systems`.",
+      });
     },
   };
 }

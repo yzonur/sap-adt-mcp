@@ -47,12 +47,12 @@ for the per-tool live-verified vs best-effort breakdown._
 
 ### Tool additions — nice-to-have
 
-- [ ] `adt_value_help` — F4 / domain fixed values / check-table contents.
+- [x] `adt_value_help` — F4 / domain fixed values / check-table contents. _DD07L/DD07T + check/value table joined with its text table; search helps not evaluated._
 - [ ] `adt_auth_check` — SU24 auth objects required by a transaction / object.
 - [ ] Code-intelligence pack — method-level call hierarchy, interface implementations, redefined methods, type hierarchy. `adt_where_used` is the broad sweep; agent needs the surgical version.
 - [ ] `adt_translations` — long texts for messages / classes (SE63 lite).
-- [ ] `adt_system_info` — release, SP level, S/4 vs ECC, ABAP Cloud availability. Clean Core prompts currently guess at this via heuristics; with a real signal the ECC backoff becomes deterministic.
-- [ ] `adt_transport_queue` — STMS import buffer status. "Where is TR X right now — DEV, in QAS buffer, imported into PRD?"
+- [x] `adt_system_info` — release, SP level, S/4 vs ECC, ABAP Cloud availability. Clean Core prompts currently guess at this via heuristics; with a real signal the ECC backoff becomes deterministic.
+- [x] `adt_transport_queue` — STMS import buffer status. "Where is TR X right now — DEV, in QAS buffer, imported into PRD?" _E070 + TPALOG across the systems of the route; the buffer file itself is not reachable over ADT._
 - [ ] `adt_compare_ddic` — DDIC metadata diff (fields, indexes, foreign keys, technical settings). Today only source can be compared cross-system; for tables that's not enough.
 
 ### Cloud connectivity — S/4HANA Public Cloud / BTP (SAML / OAuth)
@@ -95,9 +95,9 @@ Proposed shape (decided direction, not yet built):
 ### Structural improvements
 
 - [ ] MCP `resources` registration — expose the system list, open TRs, recent dumps as live resources so an agent can see them without burning a tool call.
-- [ ] Integration tests with an undici interceptor — happy/error paths for CSRF retry, read-only enforcement, lock orchestration. All current tests are pure-unit; the wire layer is unverified.
-- [ ] Read-only result cache (30 s – 2 min TTL) for repeated calls in a single agent session. `list_packages`, `search_objects`, `list_systems` are the obvious wins.
-- [ ] Cost / token awareness — soft output caps for large lists, "top N + summary" mode, opt-in `full=true`. A reckless `list_packages` against a big root currently floods context.
+- [x] Integration tests with an undici interceptor — happy/error paths for CSRF retry, read-only enforcement, lock orchestration. All current tests are pure-unit; the wire layer is unverified.
+- [x] Read-only result cache (30 s – 2 min TTL) for repeated calls in a single agent session. `list_packages`, `search_objects`, `list_systems` are the obvious wins. _60 s default TTL, dropped on any write; `list_systems` is local and needs none._
+- [x] Cost / token awareness — soft output caps for large lists, "top N + summary" mode, opt-in `full=true`. A reckless `list_packages` against a big root currently floods context. _Done for `adt_list_packages` / `adt_browse_package` (500-object soft cap)._
 - [ ] ECC-specific prompt set — `classic-abap-review`, `modification-audit`, `user-exit-finder`. Clean Core prompts are S/4-only and ECC shops get less day-one value than they could.
 ### MCP tool bugs — discovered & fixed 2026-06-10
 
