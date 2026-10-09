@@ -6,6 +6,12 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.9.0]
+
+Three new read-only tools that answer questions an agent used to guess at —
+which system is this, what values does this field accept, where is this
+transport — plus a result cache, soft output caps and wire-level tests.
+
 ### Added
 
 - **`adt_system_info`** — which system is this? Product (S/4HANA version, ECC or
