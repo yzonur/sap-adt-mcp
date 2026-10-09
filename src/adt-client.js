@@ -54,6 +54,8 @@ export class AdtClient {
     // Optional write-audit callback: invoked with one entry per unsafe-method
     // request (and per blocked read-only violation). See src/audit.js.
     this.audit = typeof hooks.audit === "function" ? hooks.audit : null;
+    // Optional write listener (the server's result cache drops itself on it).
+    this.onWrite = typeof hooks.onWrite === "function" ? hooks.onWrite : null;
     this.cookies = new Map();
     this.csrfToken = null;
     this.timeoutMs = profile.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -108,6 +110,13 @@ export class AdtClient {
     }
 
     if (isWrite) {
+      if (this.onWrite) {
+        try {
+          this.onWrite({ method: upperMethod, path: resolvedPath, status: res.status });
+        } catch {
+          // A listener must never break the request itself.
+        }
+      }
       this.#auditWrite({
         method: upperMethod,
         path: resolvedPath,

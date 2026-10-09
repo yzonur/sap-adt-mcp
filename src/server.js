@@ -16,6 +16,7 @@ import { listPrompts, getPrompt } from "./prompts.js";
 import { textResult } from "./result.js";
 import { createReporter } from "./reporter.js";
 import { createAuditLog, toolContext } from "./audit.js";
+import { createResultCache, withResultCache } from "./result-cache.js";
 
 import * as connectionTools from "./tools/connection.js";
 import * as sourceTools from "./tools/source.js";
@@ -35,6 +36,8 @@ import * as jobTools from "./tools/jobs.js";
 import * as rapTools from "./tools/rap.js";
 import * as reportTools from "./tools/report.js";
 import * as debugTools from "./tools/debug.js";
+import * as systemInfoTools from "./tools/system-info.js";
+import * as valueHelpTools from "./tools/value-help.js";
 
 const PKG = JSON.parse(
   readFileSync(
@@ -82,6 +85,9 @@ if (reporter.enabled) {
   );
 }
 
+// Read-only tool results, dropped on every write any client performs.
+const resultCache = createResultCache({ ttlMs: config.cache.ttlMs });
+
 const clientCache = new Map();
 
 function getClient(systemName) {
@@ -99,7 +105,7 @@ function getClient(systemName) {
     );
   }
   if (!clientCache.has(name)) {
-    clientCache.set(name, new AdtClient(profile, { audit: auditLog.record }));
+    clientCache.set(name, new AdtClient(profile, { audit: auditLog.record, onWrite: () => resultCache.clear() }));
   }
   return { name, client: clientCache.get(name), profile };
 }
@@ -125,6 +131,8 @@ const TOOL_MODULES = [
   rapTools,
   reportTools,
   debugTools,
+  systemInfoTools,
+  valueHelpTools,
 ];
 
 const tools = [];
@@ -164,7 +172,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   try {
     // toolContext lets the client-level audit log attribute each SAP write to
     // the MCP tool that triggered it.
-    const out = await toolContext.run({ tool: name }, () => handler(args));
+    const out = await withResultCache(
+      resultCache,
+      { tool: name, system: args.system ?? config.defaultSystem, args },
+      () => toolContext.run({ tool: name }, () => handler(args))
+    );
     // A handler that RETURNED a non-2xx ADT result (vs threw) carries structured
     // metadata on _adtError — let the reporter's classifier decide if it's a
     // likely tool defect worth auto-filing. Fire-and-forget; never throws.

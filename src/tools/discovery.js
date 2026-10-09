@@ -9,6 +9,18 @@ import { OBJECT_TYPE_HINT, SYSTEM_HINT } from "./_shared.js";
 // references for a central object; the caller can raise it per call.
 const WHERE_USED_DEFAULT_MAX = 200;
 
+// Soft output caps. A big package tree (or one package with thousands of
+// objects) would otherwise flood the agent's context in a single call; past the
+// cap the result keeps counts and a summary, and `full: true` opts back in.
+const BROWSE_ENTRY_CAP = 500;
+const LIST_PACKAGES_ENTRY_CAP = 500;
+
+function countByType(nodes) {
+  const counts = {};
+  for (const n of nodes) counts[n.type] = (counts[n.type] ?? 0) + 1;
+  return counts;
+}
+
 // A typo'd or invented `objectType` ("BADII", "BADI"…) comes back from the
 // search backend as 406 ExceptionResourceNotAcceptable / SADT_RESOURCE-037,
 // "The message content is not acceptable" (#117). Despite the wording and the
@@ -151,7 +163,7 @@ export const tools = [
   {
     name: "adt_browse_package",
     description:
-      "List the immediate contents (one level) of an ABAP package. Use adt_list_packages for recursive walks.",
+      `List the immediate contents (one level) of an ABAP package, with counts by type. Packages with more than ${BROWSE_ENTRY_CAP} objects return the first ${BROWSE_ENTRY_CAP} entries unless \`full\` is set. Use adt_list_packages for recursive walks.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -160,6 +172,10 @@ export const tools = [
           type: "string",
           description: "Package name (case-insensitive), e.g. 'ZLOCAL' or '/MYNS/MAIN'.",
         },
+        full: {
+          type: "boolean",
+          description: `Return every entry even past the soft cap of ${BROWSE_ENTRY_CAP} (default false: first ${BROWSE_ENTRY_CAP} + counts by type).`,
+        },
       },
       required: ["package"],
     },
@@ -167,7 +183,7 @@ export const tools = [
   {
     name: "adt_list_packages",
     description:
-      "Recursively walk subpackages from a root package. Returns a flattened map of package → contents (counts and entries grouped by type).",
+      `Recursively walk subpackages from a root package. Returns a flattened map of package → contents (counts and entries grouped by type) plus totals across the tree. When the tree holds more than ${LIST_PACKAGES_ENTRY_CAP} objects, per-package entries are omitted (counts and totals stay) unless \`full\` is set — browse a single subpackage with adt_browse_package to see its objects.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -183,6 +199,10 @@ export const tools = [
           description: "Safety limit on total packages visited (default 200).",
           minimum: 1,
           maximum: 5000,
+        },
+        full: {
+          type: "boolean",
+          description: `Keep per-package entries even when the tree exceeds ${LIST_PACKAGES_ENTRY_CAP} objects (default false).`,
         },
       },
       required: ["root"],
@@ -405,7 +425,21 @@ export function register({ getClient }) {
       const pkg = args.package.toUpperCase();
       const r = await fetchPackageNodes(client, pkg);
       if (!r.ok) return errorResult(sys, r.status, r.body);
-      return jsonResult({ system: sys, package: pkg, total: r.nodes.length, entries: r.nodes });
+      const capped = !args.full && r.nodes.length > BROWSE_ENTRY_CAP;
+      return jsonResult({
+        system: sys,
+        package: pkg,
+        total: r.nodes.length,
+        counts: countByType(r.nodes),
+        ...(capped
+          ? {
+              truncated: true,
+              shown: BROWSE_ENTRY_CAP,
+              hint: `Showing the first ${BROWSE_ENTRY_CAP} of ${r.nodes.length} entries; pass full: true for all of them.`,
+            }
+          : {}),
+        entries: capped ? r.nodes.slice(0, BROWSE_ENTRY_CAP) : r.nodes,
+      });
     },
 
     adt_list_packages: async (args) => {
@@ -458,12 +492,33 @@ export function register({ getClient }) {
 
       await walk(root);
 
+      const totals = {};
+      let totalObjects = 0;
+      for (const p of Object.values(packages)) {
+        for (const [type, n] of Object.entries(p.counts ?? {})) {
+          totals[type] = (totals[type] ?? 0) + n;
+          totalObjects += n;
+        }
+      }
+      const omitEntries = !args.full && totalObjects > LIST_PACKAGES_ENTRY_CAP;
+      if (omitEntries) {
+        for (const p of Object.values(packages)) delete p.entries;
+      }
+
       return jsonResult({
         system: sys,
         root,
         prefix,
         packagesVisited: visited.size,
         truncated: visited.size >= max,
+        totalObjects,
+        totals,
+        ...(omitEntries
+          ? {
+              entriesOmitted: true,
+              hint: `${totalObjects} objects exceed the soft cap of ${LIST_PACKAGES_ENTRY_CAP}; per-package entries were left out. Pass full: true, or adt_browse_package one subpackage.`,
+            }
+          : {}),
         packages,
       });
     },

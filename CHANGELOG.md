@@ -6,6 +6,36 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`adt_system_info`** — which system is this? Product (S/4HANA version, ECC or
+  plain NetWeaver), SAP_BASIS release + SP level, and whether the ABAP Cloud
+  development model is available (SAP_BASIS ≥ 7.57), read from table CVERS via
+  Data Preview. Gives the Clean Core prompts a deterministic S/4-vs-ECC signal
+  instead of a heuristic. Idea and first draft by @ilkerkaanipcioglu (#121).
+- **`adt_value_help`** — F4-style value help for a domain, data element or
+  `table` + `field`: domain fixed values with texts (DD07L/DD07T), else the
+  check / value table joined with its text table in the requested language.
+  Every DDIC name is validated before it is spliced into a SELECT.
+- **`adt_transport_queue`** — "where is TR X right now?". Reads E070 and the tp
+  action log (TPALOG) on each system of the route and reports per target
+  system: exported, in-import-queue, imported, imported-with-errors or
+  import-aborted, with every tp step and return code. A task resolves to its
+  request; an unreachable system is reported without failing the call.
+- **Result cache for read-only tools.** `adt_search_objects`,
+  `adt_browse_package`, `adt_list_packages`, `adt_where_used`, `adt_system_info`
+  and `adt_value_help` results are cached for 60 s; any write through the server
+  drops the cache. Hits are marked in `_meta`. Configure with
+  `"cache": { "ttlMs": … }` or `SAP_ADT_MCP_CACHE_TTL_MS` (`0` disables).
+- **Soft output caps.** `adt_browse_package` returns the first 500 entries of a
+  larger package plus `counts` by type; `adt_list_packages` always returns
+  `totals` and leaves out per-package entries past 500 objects. `full: true`
+  restores the complete lists.
+- **Wire-level integration tests** against an undici `MockAgent`: CSRF retry on
+  403 `Required`, read-only enforcement (including path traversal), and the
+  lock → PUT → unlock sequence of `adt_set_source`, including unlock after a
+  failed PUT.
+
 ### Removed
 
 - **Local control panel.** `adt_open_panel` / `adt_close_panel`, the `/panel`

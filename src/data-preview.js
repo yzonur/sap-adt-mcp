@@ -189,3 +189,38 @@ export function parseDataPreview(xml) {
     executionTime,
   };
 }
+
+export const FREESTYLE_PATH = "/sap/bc/adt/datapreview/freestyle";
+export const DATA_PREVIEW_ACCEPT = "application/vnd.sap.adt.datapreview.table.v1+xml";
+
+// Run one canned SELECT through Data Preview for tools that derive their answer
+// from DDIC / basis tables (adt_system_info, adt_value_help,
+// adt_transport_queue). Callers build the statement from validated names only —
+// see sqlName() — and get { ok, rows, totalRows } or the raw failure to hand to
+// errorResult().
+export async function runFreestyle(client, query, maxRows = 100) {
+  const res = await client.request({
+    method: "POST",
+    path: FREESTYLE_PATH,
+    query: { rowNumber: String(maxRows) },
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+    body: query,
+    accept: DATA_PREVIEW_ACCEPT,
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    return { ok: false, status: res.status, body: text, contentType: res.headers.get("content-type") };
+  }
+  const parsed = parseDataPreview(text);
+  return { ok: true, rows: parsed.rows, totalRows: parsed.totalRows };
+}
+
+// DDIC names (tables, fields, domains, data elements, transport ids) are spliced
+// into generated SELECTs, so anything outside the repository-name alphabet is
+// rejected before it reaches SQL. Returns the upper-cased name or null.
+export function sqlName(value, maxLength = 30) {
+  if (typeof value !== "string") return null;
+  const name = value.trim().toUpperCase();
+  if (name.length === 0 || name.length > maxLength) return null;
+  return /^[A-Z0-9_/]+$/.test(name) ? name : null;
+}

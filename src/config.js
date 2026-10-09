@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { parseCacheConfig } from "./result-cache.js";
 
 // Resolved at call time (not import time) so SAP_ADT_MCP_CONFIG is honoured
 // whenever loadConfig runs, not just whatever it was when this module loaded.
@@ -61,6 +62,7 @@ export function loadConfig() {
     systems,
     reporting: parseReporting(raw.reporting),
     audit: parseAudit(raw.audit),
+    cache: parseCacheConfig(raw.cache),
     configPath,
   };
 }
