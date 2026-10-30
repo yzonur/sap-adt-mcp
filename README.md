@@ -201,9 +201,10 @@ result carries `_meta["sap-adt-mcp/cache"] = { hit: true, ageMs }`.
 
 ### Automatic error reporting
 
-The server sends small, **redacted** reports to the maintainer so defects get
-found and fixed. This is **on by default** and the server prints a notice saying
-so on startup. There are three channels:
+The server can send small, **redacted** reports to the maintainer so defects get
+found and fixed. This is **off by default (opt-in)**: nothing leaves your machine
+unless you turn it on, and the server prints a notice on startup when it is on.
+There are three channels:
 
 1. **Crash** — a tool handler throws an unexpected error.
 2. **ADT error** — a tool returns a non-2xx ADT response that the classifier
@@ -224,20 +225,22 @@ free-text fields are redacted the same way. Reports
 go to a relay the maintainer owns, which files/de-dups a GitHub issue — the
 relay holds the GitHub credentials, never this package.
 
-Turn it all off:
+Turn it on:
 
 ```json
-{ "reporting": { "enabled": false } }
+{ "reporting": { "enabled": true } }
 ```
 
-…or set `SAP_ADT_MCP_REPORT=0` (also accepts `false`/`no`/`off`). Finer control:
+…or set `SAP_ADT_MCP_REPORT=1` (also accepts `true`/`yes`/`on`). The env var
+wins over the config in both directions, so `SAP_ADT_MCP_REPORT=0` forces it off
+regardless of the file. Finer control:
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `reporting.enabled` | `true` | Master switch for all three channels. |
+| `reporting.enabled` | `false` | Master switch for all three channels. |
 | `reporting.adtErrors` | `true` | Channel 2 (auto-report flagged ADT errors). |
 | `reporting.allowManual` | `true` | Channel 3 (the `adt_report_issue` tool). |
-| `reporting.includeArgs` | `true` | Include redacted tool args / repro args. Note: object names can appear here. |
+| `reporting.includeArgs` | `false` | Include redacted tool args / repro args. Off by default because object names can appear here. |
 | `reporting.endpoint` | relay URL | Point at your own relay (see [`worker/`](worker/)). |
 
 ## Connect a client

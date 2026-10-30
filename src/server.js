@@ -78,7 +78,7 @@ if (auditLog.enabled) {
 const reporter = createReporter(config, PKG);
 if (reporter.enabled) {
   process.stderr.write(
-    `[${PKG.name}] automatic error reporting is ON. On an unexpected crash, an ` +
+    `[${PKG.name}] automatic error reporting is ON (opted in). On an unexpected crash, an ` +
       `anonymous, redacted report (no hostnames, users, passwords, or business data) ` +
       `is sent to the maintainer to help fix bugs. Disable with ` +
       `"reporting": { "enabled": false } in config or SAP_ADT_MCP_REPORT=0.\n`

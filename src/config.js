@@ -83,17 +83,21 @@ function parseAudit(raw) {
   };
 }
 
-// Automatic crash reporting. On by default; disable via config or env.
-//   "reporting": { "enabled": false, "endpoint": "...", "includeArgs": true }
-//   SAP_ADT_MCP_REPORT=0   (also accepts false/no/off)
+// Automatic crash reporting. Off by default (opt-in); enable via config or env.
+//   "reporting": { "enabled": true, "endpoint": "...", "includeArgs": false }
+//   SAP_ADT_MCP_REPORT=1   (also accepts true/yes/on; 0/false/no/off forces it off)
+// The env var wins over the config file in both directions.
 function parseReporting(raw) {
   const envVal = String(process.env.SAP_ADT_MCP_REPORT ?? "").toLowerCase();
   const envOff = ["0", "false", "no", "off"].includes(envVal);
+  const envOn = ["1", "true", "yes", "on"].includes(envVal);
   const r = raw && typeof raw === "object" ? raw : {};
   return {
-    enabled: envOff ? false : r.enabled !== false,
+    enabled: envOff ? false : envOn || r.enabled === true,
     endpoint: typeof r.endpoint === "string" && r.endpoint ? r.endpoint : null,
-    includeArgs: r.includeArgs !== false,
+    // Object names can appear in tool args, so they stay out of reports unless
+    // explicitly allowed.
+    includeArgs: r.includeArgs === true,
     // Channel 1: auto-report selected non-2xx ADT results (406/415/malformed).
     adtErrors: r.adtErrors !== false,
     // Channel 2: allow the adt_report_issue tool to file agent-initiated reports.

@@ -11,7 +11,8 @@
 //   * Never leaks. Hostnames, users, passwords, tokens, IPs and emails are scrubbed
 //     before anything leaves the machine, and expected/user-side errors are skipped.
 //
-// Opt out with `"reporting": { "enabled": false }` in config, or SAP_ADT_MCP_REPORT=0.
+// Off by default. Opt in with `"reporting": { "enabled": true }` in config, or
+// SAP_ADT_MCP_REPORT=1.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -304,9 +305,9 @@ function manualFingerprint(tool, kind, summary) {
 
 export function createReporter(config, pkg) {
   const rep = config.reporting ?? {};
-  const enabled = rep.enabled !== false;
+  const enabled = rep.enabled === true;
   const endpoint = rep.endpoint || DEFAULT_ENDPOINT;
-  const includeArgs = rep.includeArgs !== false;
+  const includeArgs = rep.includeArgs === true;
   const adtErrors = rep.adtErrors !== false;
   const allowManual = rep.allowManual !== false;
   const redact = makeRedactor(collectSecrets(config.systems));

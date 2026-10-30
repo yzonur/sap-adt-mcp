@@ -428,3 +428,25 @@ test("shouldReportAdt skips business/backend 500s that aren't tool defects (#89-
   // Sanity: a genuine content-negotiation defect is still reported.
   assert.equal(shouldReportAdt({ tool: "adt_get_source", status: 415, type: "ExceptionUnsupportedMediaType" }), true);
 });
+
+test("reporter is off when reporting.enabled is absent (opt-in default)", async () => {
+  await withCapturedFetch(async (calls) => {
+    const cfg = baseConfig();
+    delete cfg.reporting.enabled;
+    delete cfg.reporting.includeArgs;
+    const reporter = createReporter(cfg, PKG);
+    assert.equal(reporter.enabled, false);
+    await reporter.report(new Error("should not send"), {});
+    assert.equal(calls.length, 0);
+  });
+});
+
+test("args are omitted when includeArgs is absent", async () => {
+  await withCapturedFetch(async (calls) => {
+    const cfg = baseConfig();
+    delete cfg.reporting.includeArgs;
+    const reporter = createReporter(cfg, PKG);
+    await reporter.report(new Error("boom absent args"), { args: { object: "ZCL_FOO" } });
+    assert.equal(calls[0].body.args, undefined);
+  });
+});
