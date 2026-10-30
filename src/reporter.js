@@ -29,7 +29,7 @@ const MAX_FIELD = 4000;
 
 // --- Classification: only report genuine, unexpected failures ----------------
 
-const SKIP_NAMES = new Set(["ReadOnlyViolationError", "AbortError"]);
+const SKIP_NAMES = new Set(["ReadOnlyViolationError", "AccessPolicyViolationError", "AbortError"]);
 
 // Configuration / setup mistakes and input-validation errors — the user's
 // environment or a mis-shaped tool call, not a bug in the tool.

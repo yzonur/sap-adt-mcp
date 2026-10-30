@@ -60,7 +60,9 @@ landscape-wide); switch with the `system` argument or compare across two with
 
 **Safe by default.** A `readOnly` flag (global or per-system) blocks every
 write method. Read-only POST queries (search, where-used, package tree)
-remain allowed so agents can still discover.
+remain allowed so agents can still discover. `allowedPackages` limits writes to
+your own packages, and Data Preview refuses credential and HR tables
+(`USR02`, `PA0008`, …) out of the box.
 
 **Robust.** Per-request timeout. CSRF token negotiation with auto-retry on
 403. Self-signed cert opt-out. Optional debug tracing to stderr.
@@ -145,6 +147,10 @@ The server searches in this order:
 | `rejectUnauthorized` | Set `false` to skip TLS validation for self-signed certs. Default `true`. |
 | `readOnly` | Block POST / PUT / DELETE / PATCH for this system (read-only POST queries still work). |
 | `timeoutMs` | Override default 30 s request timeout. |
+| `allowedPackages` | Writes are only allowed to objects in these packages. See [Restricting packages and tables](#restricting-packages-and-tables). |
+| `blockedTables` | Extra tables / CDS views Data Preview may not read (added to the built-in list). |
+| `useDefaultBlockedTables` | `false` drops the built-in sensitive-table list. Default `true`. |
+| `allowDataPreview` | `false` blocks every table / CDS row read (`adt_read_table`, `adt_cds_data_preview`, value help). Default `true`. |
 
 ### Read-only mode
 
@@ -154,6 +160,72 @@ Whitelisted read-only POST endpoints (`nodestructure`, `search`,
 still discover and analyze without being able to modify.
 
 Recommended: set `readOnly: true` for QAS and PRD profiles. Keep DEV writable.
+
+### Restricting packages and tables
+
+`readOnly` is all-or-nothing. Three finer controls narrow what a writable
+system can be changed in and what row data can reach the model. Each key goes
+at the top level (every system) or on a system. On a system,
+`allowedPackages`, `useDefaultBlockedTables` and `allowDataPreview` replace the
+top-level value; `blockedTables` lists are merged, so a system can only block
+more.
+
+```json
+{
+  "allowedPackages": ["Z*", "Y*", "$TMP"],
+  "blockedTables": ["ZHR_*", "I_EMPLOYEE*"],
+  "systems": {
+    "DEV": { "...": "..." },
+    "PRD": { "...": "...", "readOnly": true, "allowDataPreview": false }
+  }
+}
+```
+
+Patterns are case-insensitive; `*` matches any run of characters and `?`
+exactly one (`"/ACME/*"`, `"PA????"`).
+
+**`allowedPackages`** — every write must be provably inside one of these
+packages, otherwise it is refused before it reaches SAP (fail-closed):
+
+- *create* — the package in the create payload;
+- *source edit / lock / delete* — the package of the target object, read once
+  from the object's ADT metadata and cached for the session (a function module
+  resolves to its function group);
+- *activation* — every object listed in the activation request;
+- *transport requests* (`/sap/bc/adt/cts/…`) are not package-bound and pass;
+- anything else that can't be tied to a package (SAP Note implementation,
+  background jobs, an `adt_request` write to an unknown endpoint) is refused.
+
+An empty list (`[]`) refuses every write. Packages are matched by name only —
+list subpackages explicitly or with a wildcard.
+
+**`blockedTables`** — Data Preview (`adt_read_table`, `adt_cds_data_preview`,
+`adt_value_help`, and raw `adt_request` calls to `/sap/bc/adt/datapreview/`)
+refuses a query that names a blocked table after `FROM` / `JOIN` (outer
+query, subqueries and `UNION` branches) or as the previewed DDIC / CDS entity.
+This applies in read-only mode too. Built in, unless
+`"useDefaultBlockedTables": false`:
+
+| Tables | Why |
+| --- | --- |
+| `USR02`, `USH02`, `USRPWDHISTORY` | Logon data and password hashes |
+| `RFCDES` | RFC destinations (stored credentials) |
+| `SSF_PSE_D` | PSE / certificate store |
+| `PA????`, `PB????` | HR master data and applicant infotypes (`PA0008` basic pay, `PA0009` bank details, …) |
+| `PCL1` – `PCL5` | HR / payroll clusters |
+
+Known gap: the check sees the names in the request, not what a CDS view reads
+underneath. A CDS view over a blocked table is only caught if the view is in
+`blockedTables` too (e.g. `"I_EMPLOYEE*"`). For a system where no row data may
+leave at all, use `"allowDataPreview": false`.
+
+**`allowDataPreview: false`** — refuses every Data Preview request on that
+system. `adt_system_info` and `adt_transport_queue` also read tables this way
+and will not work there.
+
+Refusals are written to the [audit log](#audit-log) as
+`blocked-access-policy` with the reason, and are never sent to error
+reporting.
 
 ### Self-signed certificates
 

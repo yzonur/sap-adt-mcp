@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./config.js";
-import { AdtClient, ReadOnlyViolationError } from "./adt-client.js";
+import { AdtClient, ReadOnlyViolationError, AccessPolicyViolationError } from "./adt-client.js";
 import { listPrompts, getPrompt } from "./prompts.js";
 import { textResult } from "./result.js";
 import { createReporter } from "./reporter.js";
@@ -185,7 +185,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     }
     return out;
   } catch (err) {
-    if (err instanceof ReadOnlyViolationError) {
+    if (err instanceof ReadOnlyViolationError || err instanceof AccessPolicyViolationError) {
       return textResult(
         JSON.stringify({ error: err.message, code: err.code }, null, 2),
         true
