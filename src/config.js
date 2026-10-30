@@ -32,6 +32,7 @@ export function loadConfig() {
   }
 
   const globalReadOnly = raw.readOnly === true;
+  const globalAccess = parseAccessPolicy(raw, "config");
 
   const systems = {};
   for (const [name, profile] of Object.entries(raw.systems ?? {})) {
@@ -43,6 +44,7 @@ export function loadConfig() {
       password: resolveSecret(profile.password, name),
       rejectUnauthorized: profile.rejectUnauthorized !== false,
       readOnly: globalReadOnly || profile.readOnly === true,
+      ...mergeAccessPolicy(globalAccess, parseAccessPolicy(profile, `systems.${name}`)),
       // Debugging another user's session needs debug authorization on the
       // backend; off unless explicitly opted in per system.
       debugAllowRequestUser:
@@ -65,6 +67,45 @@ export function loadConfig() {
     cache: parseCacheConfig(raw.cache),
     configPath,
   };
+}
+
+// Package / table access policy (see src/access-policy.js). Each key may sit
+// at the top level (all systems) or on a system. allowedPackages,
+// useDefaultBlockedTables and allowDataPreview on a system replace the global
+// value; blockedTables lists are merged, so a system can only block more.
+function parseAccessPolicy(raw, where) {
+  const out = {};
+  if (raw.allowedPackages !== undefined) {
+    out.allowedPackages = requirePatternList(raw.allowedPackages, `${where}.allowedPackages`);
+  }
+  if (raw.blockedTables !== undefined) {
+    out.blockedTables = requirePatternList(raw.blockedTables, `${where}.blockedTables`);
+  }
+  for (const key of ["useDefaultBlockedTables", "allowDataPreview"]) {
+    if (raw[key] === undefined) continue;
+    if (typeof raw[key] !== "boolean") {
+      throw new Error(`Config: ${where}.${key} must be true or false`);
+    }
+    out[key] = raw[key];
+  }
+  return out;
+}
+
+function mergeAccessPolicy(global, system) {
+  return {
+    allowedPackages: system.allowedPackages ?? global.allowedPackages,
+    blockedTables: [...(global.blockedTables ?? []), ...(system.blockedTables ?? [])],
+    useDefaultBlockedTables:
+      system.useDefaultBlockedTables ?? global.useDefaultBlockedTables ?? true,
+    allowDataPreview: system.allowDataPreview ?? global.allowDataPreview ?? true,
+  };
+}
+
+function requirePatternList(value, key) {
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string" || v.trim() === "")) {
+    throw new Error(`Config: ${key} must be an array of non-empty strings (e.g. ["Z*", "$TMP"])`);
+  }
+  return value.map((v) => v.trim());
 }
 
 // Local write-audit trail (JSONL). On by default; disable via config or env.

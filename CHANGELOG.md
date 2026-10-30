@@ -6,6 +6,30 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Package and table access policy**, enforced in the HTTP client so no tool —
+  `adt_request` included — can bypass it:
+  - `allowedPackages` (top-level or per system): writes are refused unless the
+    target is provably in an allowed package — create payload package, the
+    target object's package (read from its ADT metadata, cached), or every
+    object in an activation request. Transport requests pass; writes that
+    can't be attributed to a package are refused (fail-closed).
+  - `blockedTables`: Data Preview refuses queries that read a blocked table or
+    preview a blocked DDIC / CDS entity, in read-only mode too. Added to a
+    built-in list of credential and HR tables (`USR02`, `USH02`,
+    `USRPWDHISTORY`, `RFCDES`, `SSF_PSE_D`, `PA????`, `PB????`, `PCL1`–`PCL5`);
+    `useDefaultBlockedTables: false` drops the built-ins. A CDS view over a
+    blocked table is not detected unless the view is listed too.
+  - `allowDataPreview: false` refuses every Data Preview request on a system.
+  - Refusals raise `AccessPolicyViolationError`, are audited as
+    `blocked-access-policy`, and are never auto-reported.
+
+### Changed
+
+- Data Preview now refuses the built-in sensitive tables by default. Reading
+  them through the MCP needs `"useDefaultBlockedTables": false`.
+
 ## [0.9.0]
 
 Three new read-only tools that answer questions an agent used to guess at —

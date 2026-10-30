@@ -1,5 +1,16 @@
 import { Agent, fetch as undiciFetch } from "undici";
 import { BUILD_FINGERPRINT, CLIENT_TRACE_SALT } from "./tools/_shared.js";
+import {
+  AccessPolicyViolationError,
+  checkDataPreview,
+  classifyWrite,
+  compilePolicy,
+  isDataPreviewPath,
+  matchesAny,
+  parsePackageRef,
+} from "./access-policy.js";
+
+export { AccessPolicyViolationError };
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 const DISCOVERY_PATH = "/sap/bc/adt/discovery";
@@ -57,6 +68,9 @@ export class AdtClient {
     // Optional write listener (the server's result cache drops itself on it).
     this.onWrite = typeof hooks.onWrite === "function" ? hooks.onWrite : null;
     this.cookies = new Map();
+    this.policy = compilePolicy(profile);
+    // Object root path → owning package, filled by the allowedPackages check.
+    this.packageCache = new Map();
     this.csrfToken = null;
     this.timeoutMs = profile.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.authHeader =
@@ -94,6 +108,15 @@ export class AdtClient {
       }
     }
 
+    if (isDataPreviewPath(resolvedPath)) {
+      const reason = checkDataPreview(this.policy, resolvedPath, query, body);
+      if (reason) this.#refuse(upperMethod, resolvedPath, reason);
+    }
+
+    if (isWrite && this.policy.allowedPackages) {
+      await this.#assertPackageAllowed(upperMethod, resolvedPath, query, body);
+    }
+
     if (UNSAFE_METHODS.has(upperMethod) && !this.csrfToken) {
       await this.#fetchCsrf();
     }
@@ -129,6 +152,48 @@ export class AdtClient {
     }
 
     return res;
+  }
+
+  #refuse(method, path, reason) {
+    this.#auditWrite({ method, path, outcome: "blocked-access-policy", reason });
+    throw new AccessPolicyViolationError(`Access policy: refusing ${method} ${path} — ${reason}`);
+  }
+
+  // allowedPackages: fail closed unless every object the write touches is
+  // provably in an allowed package.
+  async #assertPackageAllowed(method, path, query, body) {
+    const target = classifyWrite(method, path, query, body);
+    if (target.kind === "pass") return;
+    if (target.kind === "refuse") this.#refuse(method, path, target.reason);
+    const packages =
+      target.kind === "packages"
+        ? target.packages
+        : await Promise.all(target.roots.map((root) => this.#packageOf(method, path, root)));
+    const denied = [...new Set(packages.filter((p) => !matchesAny(p, this.policy.allowedPackages)))];
+    if (denied.length > 0) {
+      this.#refuse(
+        method,
+        path,
+        `package ${denied.join(", ")} is not in allowedPackages (${this.policy.allowedPackagesText || "empty"})`
+      );
+    }
+  }
+
+  async #packageOf(method, path, root) {
+    const cached = this.packageCache.get(root.toLowerCase());
+    if (cached) return cached;
+    const res = await this.#send("GET", root, null, null, {}, undefined);
+    const text = await res.text().catch(() => "");
+    const pkg = res.ok ? parsePackageRef(text) : null;
+    if (!pkg) {
+      this.#refuse(
+        method,
+        path,
+        `could not determine the package of ${root} (HTTP ${res.status}), so the write cannot be checked against allowedPackages`
+      );
+    }
+    this.packageCache.set(root.toLowerCase(), pkg);
+    return pkg;
   }
 
   #auditWrite(entry) {

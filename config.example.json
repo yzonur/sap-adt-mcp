@@ -2,6 +2,8 @@
   "defaultSystem": "DEV",
   "instanceId": "756930e3-3bd4-6893-1f4c-3f5c266f2c66",
   "readOnly": false,
+  "allowedPackages": ["Z*", "Y*", "$TMP"],
+  "blockedTables": ["ZHR_*"],
   "reporting": {
     "enabled": true,
     "includeArgs": true,
@@ -38,7 +40,8 @@
       "user": "READONLY",
       "password": "env:SAP_PRD_PASSWORD",
       "rejectUnauthorized": true,
-      "readOnly": true
+      "readOnly": true,
+      "allowDataPreview": false
     }
   }
 }
