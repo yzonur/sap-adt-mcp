@@ -140,11 +140,71 @@ The server searches in this order:
 | `host` | Base URL including scheme + ICM HTTPS port (e.g. `https://...:44300`). |
 | `client` | SAP client (sets `sap-client` query param). |
 | `language` | Optional logon language (sets `sap-language`). |
-| `user` | RFC user. |
-| `password` | Either a literal string or `env:VAR_NAME` to read from environment. |
+| `user` | RFC user. Optional with `auth.type` `certificate` / `bearer`, but still used as the default transport owner. |
+| `password` | A secret reference — `keychain:<account>`, `dpapi:<blob>`, `env:VAR_NAME` — or a literal string. See [Authentication & secret storage](#authentication--secret-storage). |
+| `auth` | Logon method: omitted = Basic (user/password), or a `certificate` / `bearer` block. |
 | `rejectUnauthorized` | Set `false` to skip TLS validation for self-signed certs. Default `true`. |
 | `readOnly` | Block POST / PUT / DELETE / PATCH for this system (read-only POST queries still work). |
 | `timeoutMs` | Override default 30 s request timeout. |
+
+### Authentication & secret storage
+
+**Keep secrets out of `config.json`.** Every secret field (`password`,
+`auth.passphrase`, `auth.token`) takes a reference instead of the value:
+
+| Value | Where the secret lives |
+| --- | --- |
+| `keychain:<account>` | macOS Keychain (`security`) or the Linux Secret Service (`secret-tool`, from `libsecret-tools`), service `sap-adt-mcp`. |
+| `dpapi:<base64>` | Windows DPAPI blob (CurrentUser scope) — only the Windows user that created it can decrypt it, on that machine. |
+| `env:VAR_NAME` | An environment variable. |
+| anything else | Used literally (avoid outside throwaway setups). |
+
+Store one with the CLI — the input is hidden and the secret never lands on a
+command line:
+
+```bash
+sap-adt-mcp set-password DEV
+# Stored. Use this in ~/.sap-adt-mcp/config.json for system DEV:
+#   "password": "keychain:DEV"        (Windows prints "dpapi:AQAAANCMnd8B...")
+```
+
+**Logon methods.** Basic auth (user + password) stays the default. Two more
+are available per system through an `auth` block:
+
+```json
+"DEV_SSO": {
+  "host": "https://sap-dev.example.com:44300",
+  "client": "100",
+  "user": "DEVELOPER",
+  "auth": {
+    "type": "certificate",
+    "pfx": "~/.sap-adt-mcp/dev-user.p12",
+    "passphrase": "keychain:DEV_SSO"
+  }
+}
+```
+
+- **`certificate`** — X.509 client certificate (mutual TLS). This is the
+  password-less path for landscapes that use SSO with certificates: the
+  ICM maps the certificate to the SAP user (`CERTRULE` / table
+  `USREXTID`), so no `Authorization` header is sent. Give either `pfx`
+  (PKCS#12) or `cert` + `key` (PEM), plus an optional `ca` for an internal
+  CA and an optional `passphrase`. `user` is optional but recommended (it is
+  the default owner for `adt_create_transport` and the debugger).
+  SNC itself is an RFC/GUI protocol; over HTTP the equivalent is this
+  certificate logon, which the ICM must have enabled
+  (`icm/HTTPS/verify_client`).
+- **`bearer`** — `{ "type": "bearer", "token": "env:SAP_TOKEN" }` sends
+  `Authorization: Bearer <token>` (OAuth-fronted systems, SAP BTP ABAP
+  environment). The server does not refresh tokens: when SAP answers 401 the
+  tool returns a "token expired" error; put a fresh token in place and
+  restart. Kerberos/SPNEGO and browser-based SAML logon are not supported.
+
+> **SAP BTP ABAP environment (Steampunk) / S/4HANA Cloud:** bearer auth is
+> implemented and covered by wire-level tests, but has **not** been verified
+> against a live BTP ABAP environment yet. Feedback welcome. Obtaining the
+> token (OAuth flow against the service key's UAA) happens outside this
+> server for now.
 
 ### Read-only mode
 
@@ -679,7 +739,9 @@ fail with a 500 — pass an existing TR id instead.
   hits — fall back to `adt_request` with the right path / content type for
   your release.
 - **ABAP Cloud (BTP / Steampunk).** Only on-prem ADT 7.5x+ has been actively
-  exercised. Steampunk uses a stricter object-type allowlist (only released
+  exercised. Bearer-token logon for BTP is implemented (see
+  [Authentication & secret storage](#authentication--secret-storage)) but
+  untested against a live tenant. Steampunk uses a stricter object-type allowlist (only released
   / public APIs) and some collection endpoints differ. Steampunk users:
   please open an issue with the endpoints that differ; PRs welcome.
 - **Object-create XML shapes.** The body templates target modern on-prem

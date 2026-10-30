@@ -29,7 +29,7 @@ const MAX_FIELD = 4000;
 
 // --- Classification: only report genuine, unexpected failures ----------------
 
-const SKIP_NAMES = new Set(["ReadOnlyViolationError", "AbortError"]);
+const SKIP_NAMES = new Set(["ReadOnlyViolationError", "AbortError", "BearerTokenRejectedError"]);
 
 // Configuration / setup mistakes and input-validation errors — the user's
 // environment or a mis-shaped tool call, not a bug in the tool.
@@ -93,7 +93,7 @@ function shouldReport(err) {
 function collectSecrets(systems = {}) {
   const out = new Set();
   for (const p of Object.values(systems)) {
-    for (const v of [p.host, p.user, p.password, p.client]) {
+    for (const v of [p.host, p.user, p.password, p.client, p.auth?.token, p.auth?.passphrase]) {
       if (typeof v === "string" && v.length >= 4) out.add(v);
       if (typeof v === "string" && p.host === v) {
         const bare = v.replace(/^https?:\/\//i, "");

@@ -6,6 +6,37 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **OS secret storage.** Secret fields (`password`, `auth.passphrase`,
+  `auth.token`) accept `keychain:<account>` (macOS Keychain / Linux Secret
+  Service) and `dpapi:<blob>` (Windows DPAPI, CurrentUser) besides `env:`.
+  New CLI `sap-adt-mcp set-password <SYSTEM>` stores a secret with hidden
+  input and prints the config value to use. No new dependencies — it shells
+  out to `security`, `secret-tool` or PowerShell, never through a shell
+  string, and the secret travels over stdin/stdout, not argv.
+- **Per-system `auth` block.** `certificate` (X.509 client certificate / mutual
+  TLS: `pfx` or `cert`+`key`, optional `ca` and `passphrase`) for SSO
+  landscapes that log on with certificates, and `bearer` (static OAuth token)
+  for OAuth-fronted systems such as the SAP BTP ABAP environment. Basic stays
+  the default; existing configs are unchanged. With certificate/bearer,
+  `user`/`password` are optional.
+- A 401 under bearer auth now raises a "token expired or invalid" error with
+  the fix, and is never auto-reported.
+
+### Security
+
+- Bearer tokens and certificate passphrases are added to the crash reporter's
+  verbatim redaction list.
+- `SAP_ADT_MCP_DEBUG=1` traces no longer print the `Cookie` header (session
+  cookies), only `Authorization` was hidden before.
+
+### Not verified
+
+- Bearer auth has wire-level tests but has not been run against a live SAP
+  BTP ABAP environment. Certificate logon was verified against a local
+  mutual-TLS server, not yet against an SAP ICM.
+
 ## [0.9.0]
 
 Three new read-only tools that answer questions an agent used to guess at —

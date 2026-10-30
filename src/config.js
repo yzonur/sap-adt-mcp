@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { parseCacheConfig } from "./result-cache.js";
+import { resolveSecret } from "./secrets.js";
 
 // Resolved at call time (not import time) so SAP_ADT_MCP_CONFIG is honoured
 // whenever loadConfig runs, not just whatever it was when this module loaded.
@@ -35,12 +36,23 @@ export function loadConfig() {
 
   const systems = {};
   for (const [name, profile] of Object.entries(raw.systems ?? {})) {
+    const auth = parseAuth(profile.auth, name);
+    const basic = auth.type === "basic";
     systems[name] = {
       host: requireHost(profile.host, name),
       client: profile.client != null ? String(profile.client) : undefined,
       language: profile.language != null ? String(profile.language) : undefined,
-      user: requireString(profile.user, `${name}.user`),
-      password: resolveSecret(profile.password, name),
+      // Certificate / bearer logons don't need a user for the connection
+      // itself, but tools still use it as the default TR owner / debug user.
+      user:
+        basic || profile.user != null
+          ? requireString(profile.user, `${name}.user`)
+          : undefined,
+      password:
+        basic || profile.password != null
+          ? resolveSecret(profile.password, `System ${name}: password`)
+          : undefined,
+      auth,
       rejectUnauthorized: profile.rejectUnauthorized !== false,
       readOnly: globalReadOnly || profile.readOnly === true,
       // Debugging another user's session needs debug authorization on the
@@ -131,19 +143,61 @@ function requireHost(value, systemName) {
   return host;
 }
 
-function resolveSecret(value, systemName) {
-  if (typeof value !== "string") {
-    throw new Error(`System ${systemName}: password must be a string`);
+// Per-system logon method. Omitted → basic auth with user/password.
+//   { "type": "certificate", "pfx": "/path/client.p12", "passphrase": "keychain:DEV" }
+//   { "type": "certificate", "cert": "/path/c.pem", "key": "/path/k.pem", "ca": "/path/ca.pem" }
+//   { "type": "bearer", "token": "env:SAP_TOKEN" }
+// Certificate material is read at load so a wrong path fails here, not mid-call.
+function parseAuth(raw, systemName) {
+  if (raw == null) return { type: "basic" };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Config: ${systemName}.auth must be an object`);
   }
-  if (value.startsWith("env:")) {
-    const varName = value.slice(4);
-    const resolved = process.env[varName];
-    if (!resolved) {
+  const type = String(raw.type ?? "basic").toLowerCase();
+  if (type === "basic") return { type: "basic" };
+  if (type === "bearer") {
+    return {
+      type: "bearer",
+      token: resolveSecret(
+        requireString(raw.token, `${systemName}.auth.token`),
+        `System ${systemName}: auth.token`
+      ),
+    };
+  }
+  if (type === "certificate") {
+    const readFile = (key) => {
+      const p = requireString(raw[key], `${systemName}.auth.${key}`);
+      try {
+        return fs.readFileSync(expandHome(p));
+      } catch (err) {
+        throw new Error(
+          `Config: ${systemName}.auth.${key}: cannot read ${p} (${err.code ?? err.message})`,
+          { cause: err }
+        );
+      }
+    };
+    const out = { type: "certificate" };
+    if (raw.pfx != null) {
+      out.pfx = readFile("pfx");
+    } else if (raw.cert != null && raw.key != null) {
+      out.cert = readFile("cert");
+      out.key = readFile("key");
+    } else {
       throw new Error(
-        `System ${systemName}: env var ${varName} is not set`
+        `Config: ${systemName}.auth (certificate) needs "pfx", or both "cert" and "key".`
       );
     }
-    return resolved;
+    if (raw.ca != null) out.ca = readFile("ca");
+    if (raw.passphrase != null) {
+      out.passphrase = resolveSecret(raw.passphrase, `System ${systemName}: auth.passphrase`);
+    }
+    return out;
   }
-  return value;
+  throw new Error(
+    `Config: ${systemName}.auth.type must be "basic", "certificate" or "bearer" (got "${raw.type}").`
+  );
+}
+
+function expandHome(p) {
+  return p === "~" || p.startsWith("~/") ? path.join(os.homedir(), p.slice(1)) : p;
 }

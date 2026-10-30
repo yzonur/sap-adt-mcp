@@ -17,7 +17,7 @@
       "client": "100",
       "language": "EN",
       "user": "DEVELOPER",
-      "password": "env:SAP_DEV_PASSWORD",
+      "password": "keychain:DEV",
       "rejectUnauthorized": false,
       "debug": {
         "allowRequestUser": false
@@ -39,6 +39,23 @@
       "password": "env:SAP_PRD_PASSWORD",
       "rejectUnauthorized": true,
       "readOnly": true
+    },
+    "DEV_CERT": {
+      "host": "https://sap-dev.example.com:44300",
+      "client": "100",
+      "user": "DEVELOPER",
+      "auth": {
+        "type": "certificate",
+        "pfx": "~/.sap-adt-mcp/dev-user.p12",
+        "passphrase": "keychain:DEV_CERT"
+      }
+    },
+    "BTP": {
+      "host": "https://my-instance.abap.eu10.hana.ondemand.com",
+      "auth": {
+        "type": "bearer",
+        "token": "env:SAP_BTP_TOKEN"
+      }
     }
   }
 }

@@ -78,8 +78,19 @@ Proposed shape (decided direction, not yet built):
 - [ ] Shared cloud auth layer: in SAML/cloud mode skip `Authorization` + `sap-client`
   header, send `x-sap-adt-sessiontype: stateful`; CSRF from
   `/sap/bc/adt/compatibility/graph` (not `/discovery`); force-refresh CSRF on 403.
-- [ ] Credential source A — **Bearer token** (service key / OAuth): tiny change,
-  headless, refreshable. For tenants that expose it.
+- [x] Credential source A — **Bearer token** (service key / OAuth): tiny change,
+  headless, refreshable. For tenants that expose it. _`auth: { type: "bearer",
+  token }` shipped; static token, no refresh; 401 → "token expired" error.
+  Untested against a live BTP ABAP env._
+- [ ] OAuth login helper for BTP service keys: authorization-code flow against
+  the service key's UAA (local redirect listener, browser), refresh token kept
+  in the OS keychain, access token refreshed before expiry. Not built — needs a
+  BTP ABAP environment (trial or customer tenant) to test against.
+- [x] X.509 client-certificate logon (mutual TLS) for on-prem SSO landscapes —
+  `auth: { type: "certificate", pfx | cert+key, ca?, passphrase? }`. _Verified
+  against a local mTLS server; not yet against an SAP ICM._
+- [x] OS secret storage — `keychain:` (macOS/Linux) and `dpapi:` (Windows)
+  secret references + `sap-adt-mcp set-password <SYSTEM>`.
 - [ ] Credential source C — **captured cookie file** consumption in the lean core
   (load JSON → cookie map; our name-keyed Map already avoids the Python
   `CookieConflictError`). Universal fallback.
@@ -87,7 +98,9 @@ Proposed shape (decided direction, not yet built):
   dependency, so non-cloud installs stay lean.
 - [ ] Security: cookie/token file is a bearer credential — gitignore, restricted
   perms, redact from crash reporter; also stop the DEBUG trace from printing the
-  `Cookie` header (currently only `Authorization` is skipped).
+  `Cookie` header (currently only `Authorization` is skipped). _Partly done:
+  tokens/passphrases are redacted and the DEBUG trace skips `Cookie`; the
+  cookie-file part waits for credential source C._
 - [ ] Note for users: cloud development is ABAP Cloud / Clean Core (restricted
   language, released APIs only, customer namespace) — the connection works like
   on-prem but the platform itself limits what can be done.
