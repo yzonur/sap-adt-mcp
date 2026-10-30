@@ -141,6 +141,13 @@ export function register({ getClient }) {
 
     adt_create_transport: async (args) => {
       const { client, name: sys, profile } = getClient(args.system);
+      if (!profile.user) {
+        // Certificate / bearer logons may omit `user`; CTS needs an owner.
+        return textResult(
+          `System ${sys} has no "user" configured, which adt_create_transport needs as the request owner. Add "user" to the system's config.`,
+          true
+        );
+      }
       const trType = args.type ?? "K";
       // Only emit tm:target when a real target is given. Sending tm:target=""
       // (the old default) makes some systems reject the create with an opaque

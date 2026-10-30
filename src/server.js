@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./config.js";
+import { setPasswordCli } from "./secrets.js";
 import { AdtClient, ReadOnlyViolationError } from "./adt-client.js";
 import { listPrompts, getPrompt } from "./prompts.js";
 import { textResult } from "./result.js";
@@ -59,6 +60,9 @@ if (argv.includes("--version") || argv.includes("-v")) {
 if (argv.includes("--validate-config")) {
   await validateConfig();
   // validateConfig() exits.
+}
+if (argv[0] === "set-password") {
+  process.exit(await setPasswordCli(argv.slice(1)));
 }
 
 // --- Boot --------------------------------------------------------------------
@@ -204,6 +208,10 @@ ${PKG.description}
 Usage:
   ${PKG.name}                    Start the MCP server (stdio transport).
   ${PKG.name} --validate-config  Load config and ping every system.
+  ${PKG.name} set-password <SYSTEM>
+                                 Store a secret in the OS keychain (macOS/Linux)
+                                 or as a DPAPI blob (Windows) and print the
+                                 config value that reads it.
   ${PKG.name} --version          Print version.
   ${PKG.name} --help             Print this message.
 
@@ -232,6 +240,7 @@ async function validateConfig() {
     const flags = [];
     if (profile.readOnly) flags.push("read-only");
     if (profile.rejectUnauthorized === false) flags.push("tls-skip");
+    if (profile.auth && profile.auth.type !== "basic") flags.push(`auth=${profile.auth.type}`);
     const tag = flags.length ? ` [${flags.join(", ")}]` : "";
     process.stdout.write(`  ${name}${tag} ${profile.host} ... `);
     try {

@@ -48,6 +48,42 @@ export class ReadOnlyViolationError extends Error {
   }
 }
 
+export class BearerTokenRejectedError extends Error {
+  constructor() {
+    super(
+      "SAP rejected the bearer token (HTTP 401) — it has expired or is invalid. " +
+        "Obtain a fresh token, update auth.token (or the env var / keychain entry it " +
+        "points to) and restart the MCP server."
+    );
+    this.name = "BearerTokenRejectedError";
+    this.code = "BEARER_TOKEN_REJECTED";
+  }
+}
+
+// Authorization header for the configured logon method; null when the TLS
+// client certificate is the credential.
+export function buildAuthHeader(profile) {
+  const auth = profile.auth ?? { type: "basic" };
+  if (auth.type === "certificate") return null;
+  if (auth.type === "bearer") return `Bearer ${auth.token}`;
+  return (
+    "Basic " + Buffer.from(`${profile.user}:${profile.password}`).toString("base64")
+  );
+}
+
+// undici `connect` (TLS) options, or undefined when the default dispatcher will do.
+export function buildConnectOptions(profile) {
+  const connect = {};
+  if (profile.rejectUnauthorized === false) connect.rejectUnauthorized = false;
+  const auth = profile.auth;
+  if (auth?.type === "certificate") {
+    for (const key of ["pfx", "cert", "key", "ca", "passphrase"]) {
+      if (auth[key] != null) connect[key] = auth[key];
+    }
+  }
+  return Object.keys(connect).length > 0 ? connect : undefined;
+}
+
 export class AdtClient {
   constructor(profile, hooks = {}) {
     this.profile = profile;
@@ -59,13 +95,10 @@ export class AdtClient {
     this.cookies = new Map();
     this.csrfToken = null;
     this.timeoutMs = profile.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    this.authHeader =
-      "Basic " +
-      Buffer.from(`${profile.user}:${profile.password}`).toString("base64");
-    this.dispatcher =
-      profile.rejectUnauthorized === false
-        ? new Agent({ connect: { rejectUnauthorized: false } })
-        : undefined;
+    this.authType = profile.auth?.type ?? "basic";
+    this.authHeader = buildAuthHeader(profile);
+    const connect = buildConnectOptions(profile);
+    this.dispatcher = connect ? new Agent({ connect }) : undefined;
   }
 
   async request({ method = "GET", path, query, body, headers = {}, accept, timeoutMs }) {
@@ -201,7 +234,8 @@ export class AdtClient {
   async #send(method, adtPath, query, body, extraHeaders, accept, internalHeaders, timeoutMs) {
     const url = this.#buildUrl(adtPath, query);
     const headers = new Headers();
-    headers.set("Authorization", this.authHeader);
+    // Certificate logon authenticates in the TLS handshake — no header.
+    if (this.authHeader) headers.set("Authorization", this.authHeader);
     headers.set(
       "Accept",
       accept ?? "application/xml, application/json;q=0.9, */*;q=0.1"
@@ -286,6 +320,11 @@ export class AdtClient {
     if (DEBUG) traceResponse(method, url, res.status, Date.now() - start);
 
     this.#captureCookies(res.headers);
+    // Bearer tokens are short-lived and this client cannot refresh them; a 401
+    // means the token expired or was revoked. Fail with the fix, not a raw 401.
+    if (res.status === 401 && this.authType === "bearer") {
+      throw new BearerTokenRejectedError();
+    }
     return res;
   }
 
@@ -344,7 +383,8 @@ function traceRequest(method, url, headers, body) {
   const safeUrl = url.replace(/\/\/[^@/]+@/, "//***@"); // strip basic-auth prefix if any
   process.stderr.write(`[adt-debug] → ${method} ${safeUrl}\n`);
   for (const [k, v] of headers.entries()) {
-    if (k.toLowerCase() === "authorization") continue;
+    // Session cookies are as good as a password while they live.
+    if (k.toLowerCase() === "authorization" || k.toLowerCase() === "cookie") continue;
     process.stderr.write(`[adt-debug]   ${k}: ${v}\n`);
   }
   if (body) {
