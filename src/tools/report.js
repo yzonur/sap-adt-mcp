@@ -29,7 +29,7 @@ export const tools = [
         reproArgs: {
           type: "object",
           description:
-            "Optional tool arguments that reproduce the issue. Redacted like every report (hosts/users/secrets stripped); suppressed entirely when reporting.includeArgs is off.",
+            "Optional tool arguments that reproduce the issue. Redacted like every report (hosts/users/secrets stripped); suppressed entirely unless reporting.includeArgs is on.",
         },
       },
       required: ["tool", "summary"],
@@ -56,7 +56,7 @@ export function register({ reporter }) {
           ok: false,
           reason: r?.reason ?? "not submitted",
           hint:
-            "Reporting may be disabled (reporting.enabled / reporting.allowManual in config, or SAP_ADT_MCP_REPORT=0).",
+            "Reporting is off by default; it needs reporting.enabled: true (and reporting.allowManual not false) in config, or SAP_ADT_MCP_REPORT=1.",
         });
       }
       return jsonResult({

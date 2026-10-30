@@ -6,6 +6,15 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Error reporting is now opt-in.** `reporting.enabled` and
+  `reporting.includeArgs` default to `false`; nothing is sent to the relay unless
+  the config sets `"reporting": { "enabled": true }` or `SAP_ADT_MCP_REPORT=1`.
+  Tool arguments (which can carry object names) stay out of reports unless
+  `includeArgs: true` is set as well. `SAP_ADT_MCP_REPORT=0` still forces it off.
+  Installs that want to keep sending reports must add `"enabled": true`.
+
 ## [0.9.0]
 
 Three new read-only tools that answer questions an agent used to guess at —
