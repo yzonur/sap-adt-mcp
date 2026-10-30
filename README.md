@@ -82,8 +82,8 @@ npm install -g sap-adt-mcp
 npx sap-adt-mcp
 ```
 
-Requires Node.js **22.19+** (undici v8, used as the HTTP client, requires
-this minimum).
+Requires Node.js **20.18.1+** (the minimum of undici v7, the HTTP client).
+CI runs the suite on Node 20, 22 and 24.
 
 ## Configure
 

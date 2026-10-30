@@ -42,7 +42,7 @@ Out of scope:
 
 ## Coding conventions
 
-- Pure JavaScript, ESM, Node 18+. No TypeScript build step.
+- Pure JavaScript, ESM, Node 20.18.1+ (CI covers 20, 22, 24) — avoid APIs newer than Node 20. No TypeScript build step.
 - All comments in source code in **English**.
 - Prefer the standard library over new dependencies. Both runtime deps
   (`@modelcontextprotocol/sdk`, `undici`) are deliberate; please don't add more

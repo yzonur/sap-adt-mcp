@@ -6,6 +6,13 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Node.js 20.18.1+ is supported again** (was 22.19+). The HTTP client moves
+  from undici v8 to v7, the line that still supports Node 20; nothing in the
+  server used a v8-only API. CI now runs on Node 20, 22 and 24, so corporate
+  machines pinned to Node 20 LTS can run it without an upgrade.
+
 ## [0.9.0]
 
 Three new read-only tools that answer questions an agent used to guess at —
