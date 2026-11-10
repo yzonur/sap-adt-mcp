@@ -17,6 +17,12 @@ the other read-only tools.
 0.9.0 was tagged but never published to npm, so this is the first npm release
 since 0.8.58 and also ships everything listed under 0.9.0.
 
+### Fixed
+
+- **Per-system `timeoutMs` was ignored.** The README documents it, but
+  `loadConfig()` dropped the field, so every request used the 30 s default.
+  The published 0.10.0 package already carries this fix; the commit follows it.
+
 ### Added
 
 - **`adt_auth_check`** — authorization objects an application needs. For a

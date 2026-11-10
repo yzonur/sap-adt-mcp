@@ -55,3 +55,12 @@ test("loadConfig: rejects a degenerate host like '0'", () => {
     assert.throws(() => loadConfig(), /host must be a full URL including scheme/);
   });
 });
+
+test("loadConfig: keeps a per-system timeoutMs and drops invalid values", () => {
+  const cfg = (timeoutMs) => ({
+    systems: { E4D: { host: "https://sap.example.com", user: "U", password: "x", timeoutMs } },
+  });
+  withConfig(cfg(120000), () => assert.equal(loadConfig().systems.E4D.timeoutMs, 120000));
+  withConfig(cfg(0), () => assert.equal(loadConfig().systems.E4D.timeoutMs, undefined));
+  withConfig(cfg("60000"), () => assert.equal(loadConfig().systems.E4D.timeoutMs, undefined));
+});

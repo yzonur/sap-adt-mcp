@@ -43,6 +43,7 @@ export function loadConfig() {
       password: resolveSecret(profile.password, name),
       rejectUnauthorized: profile.rejectUnauthorized !== false,
       readOnly: globalReadOnly || profile.readOnly === true,
+      timeoutMs: Number.isFinite(profile.timeoutMs) && profile.timeoutMs > 0 ? profile.timeoutMs : undefined,
       // Debugging another user's session needs debug authorization on the
       // backend; off unless explicitly opted in per system.
       debugAllowRequestUser:
