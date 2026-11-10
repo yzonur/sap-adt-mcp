@@ -6,11 +6,16 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+## [0.10.0]
+
 Six new read-only tools, closing the "nice-to-have" tool list: authorization
 requirements, a code-intelligence pack, translations and a DDIC diff. All of
 them answer from DDIC / basis tables over Data Preview (NetWeaver 7.55+ /
 S/4HANA), validate every name before it reaches a SELECT, and are cached like
 the other read-only tools.
+
+0.9.0 was tagged but never published to npm, so this is the first npm release
+since 0.8.58 and also ships everything listed under 0.9.0.
 
 ### Added
 
