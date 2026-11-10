@@ -48,12 +48,12 @@ for the per-tool live-verified vs best-effort breakdown._
 ### Tool additions — nice-to-have
 
 - [x] `adt_value_help` — F4 / domain fixed values / check-table contents. _DD07L/DD07T + check/value table joined with its text table; search helps not evaluated._
-- [ ] `adt_auth_check` — SU24 auth objects required by a transaction / object.
-- [ ] Code-intelligence pack — method-level call hierarchy, interface implementations, redefined methods, type hierarchy. `adt_where_used` is the broad sweep; agent needs the surgical version.
-- [ ] `adt_translations` — long texts for messages / classes (SE63 lite).
+- [x] `adt_auth_check` — SU24 auth objects required by a transaction / object. _SU24 (USOBX_C/USOBT_C) + TSTCA for transactions and RFC modules; static AUTHORITY-CHECK scan for source objects._
+- [x] Code-intelligence pack — method-level call hierarchy, interface implementations, redefined methods, type hierarchy. `adt_where_used` is the broad sweep; agent needs the surgical version. _`adt_type_hierarchy`, `adt_method_redefinitions`, `adt_call_hierarchy` — SEOMETAREL / SEOREDEF / WBCROSSGT; static references only._
+- [x] `adt_translations` — long texts for messages / classes (SE63 lite). _Also data elements and domains; text pools are not table-readable and stay out._
 - [x] `adt_system_info` — release, SP level, S/4 vs ECC, ABAP Cloud availability. Clean Core prompts currently guess at this via heuristics; with a real signal the ECC backoff becomes deterministic.
 - [x] `adt_transport_queue` — STMS import buffer status. "Where is TR X right now — DEV, in QAS buffer, imported into PRD?" _E070 + TPALOG across the systems of the route; the buffer file itself is not reachable over ADT._
-- [ ] `adt_compare_ddic` — DDIC metadata diff (fields, indexes, foreign keys, technical settings). Today only source can be compared cross-system; for tables that's not enough.
+- [x] `adt_compare_ddic` — DDIC metadata diff (fields, indexes, foreign keys, technical settings). Today only source can be compared cross-system; for tables that's not enough. _Tables and structures; CDS stays with adt_compare_source._
 
 ### Cloud connectivity — S/4HANA Public Cloud / BTP (SAML / OAuth)
 

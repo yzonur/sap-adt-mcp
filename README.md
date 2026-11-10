@@ -39,12 +39,14 @@ prompts** that turn the tool surface into outcome-shaped slash commands
 | Lifecycle | `adt_create_object`, `adt_delete_object`, `adt_activate`, `adt_lock`, `adt_unlock`, `adt_list_inactive_objects` |
 | Versions | `adt_list_versions`, `adt_compare_versions` |
 | Discovery | `adt_browse_package`, `adt_list_packages`, `adt_search_objects`, `adt_grep_source`, `adt_where_used` |
+| Code intelligence | `adt_type_hierarchy`, `adt_method_redefinitions`, `adt_call_hierarchy` |
 | CDS | `adt_cds_data_preview`, `adt_cds_dependencies`, `adt_list_released_apis` |
-| Cross-system | `adt_compare_source`, `adt_transport_diff` |
+| Cross-system | `adt_compare_source`, `adt_transport_diff`, `adt_compare_ddic` |
 | Transports | `adt_list_transports`, `adt_get_transport`, `adt_create_transport`, `adt_release_transport`, `adt_transport_queue` |
 | Runtime errors | `adt_list_dumps`, `adt_get_dump` |
 | Debugger | `adt_debug_set_breakpoint`, `adt_debug_delete_breakpoint`, `adt_debug_listen`, `adt_debug_stack`, `adt_debug_variables`, `adt_debug_step`, `adt_debug_goto_stack`, `adt_debug_set_variable`, `adt_debug_set_watchpoint`, `adt_debug_delete_watchpoint`, `adt_debug_stop` |
-| Data | `adt_read_table`, `adt_value_help` |
+| Data | `adt_read_table`, `adt_value_help`, `adt_translations` |
+| Authorization | `adt_auth_check` |
 | Generation | `adt_rap_scaffold` |
 | Experimental¹ | `adt_get_note`, `adt_check_note_status`, `adt_implement_note`, `adt_list_locks`, `adt_schedule_job`, `adt_read_spool` |
 | Escape hatch | `adt_request` |
@@ -187,7 +189,9 @@ Configure or disable:
 
 Agents repeat the same discovery calls while they reason. Results of the
 read-only tools `adt_search_objects`, `adt_browse_package`, `adt_list_packages`,
-`adt_where_used`, `adt_system_info` and `adt_value_help` are cached in memory
+`adt_where_used`, `adt_system_info`, `adt_value_help`, `adt_auth_check`,
+`adt_type_hierarchy`, `adt_method_redefinitions`, `adt_call_hierarchy`,
+`adt_translations` and `adt_compare_ddic` are cached in memory
 for 60 seconds per system and argument set. Any write this server performs
 drops the whole cache, so you never read back a stale result of your own change;
 changes made elsewhere (SAP GUI, Eclipse) can be up to one TTL old. A cached
@@ -318,12 +322,25 @@ or rejecting credentials. Run this first when troubleshooting.
 | `adt_search_objects` | Quick-search by name pattern. | `*` wildcard. Returns parsed `{ name, type, description, packageName, uri }` records. |
 | `adt_where_used` | Where-used list. | Same parsed record shape. Capped at `maxResults` (default 200); the response carries the backend's own `numberOfResults` plus `truncated` when the list was cut. |
 
+### Code intelligence
+
+The surgical counterpart of `adt_where_used`, answered from the class-builder and
+cross-reference tables over Data Preview (NetWeaver 7.55+ / S/4HANA). Global
+classes and interfaces only.
+
+| Tool | Purpose | Notes |
+| --- | --- | --- |
+| `adt_type_hierarchy` | Superclasses, subclasses, implemented interfaces, implementers of an interface. | SEOMETAREL, walked level by level. Each edge is `{ name, relation: inherits \| implements \| includes, depth }`; `superclasses` gives the chain in order. `direction`: `up` / `down` / `both`; `depth` (default 5) and `maxNodes` (default 500) bound the walk. |
+| `adt_method_redefinitions` | Which methods a class redefines; who redefines a given method. | SEOREDEF. With `method`: the class that originally declares it (SEOCOMPO up the superclass chain), whether this class redefines it, and every subclass that does. Interface methods as `IF_NAME~METHOD`. |
+| `adt_call_hierarchy` | Callers / callees of a method or function module. | WBCROSSGT / CROSS. Callers come back resolved to the calling method or function module (via TMDIR / TFDIR), else the include. One level per call. Static only — dynamic calls are not indexed, and a call through an interface reference is recorded under the interface method. |
+
 ### Cross-system
 
 | Tool | Purpose | Notes |
 | --- | --- | --- |
 | `adt_compare_source` | Diff one object between two systems. | Returns unified diff + `{ added, removed }` stats. |
 | `adt_transport_diff` | Diff every object in a TR between two systems. | Caps at `maxObjects` (default 50). |
+| `adt_compare_ddic` | Diff a table's / structure's DDIC definition between two systems. | Header (category, delivery class, client dependence, enhancement category), fields (key, data element, type, length, check table, reference field, order), technical settings, secondary indexes and foreign keys — only the differences come back. `tableB` compares two differently named tables, also on one system. Data Preview baseline. |
 
 ### Runtime errors
 
@@ -402,6 +419,8 @@ by default; enable it per system with `"debug": { "allowRequestUser": true }`
 | --- | --- | --- |
 | `adt_read_table` | Run an OpenSQL SELECT via the ADT Data Preview API. | SE16-style table reads. SELECT-only — INSERT/UPDATE/DELETE rejected client-side; the SAP endpoint enforces server-side too. `maxRows` capped at 5000 (default 100). Requires NetWeaver 7.55+ / S/4HANA. |
 | `adt_system_info` | Which system is this? | Product (S/4HANA version, ECC or plain NetWeaver), SAP_BASIS release + SP level, and whether ABAP Cloud is available (SAP_BASIS ≥ 7.57), read from table CVERS. `includeComponents: true` lists every installed component. Same Data Preview baseline as `adt_read_table`. |
+| `adt_translations` | Texts in every language and where translations are missing (SE63 lite). | `messageClass` (+ `number`): T100 short texts, class description, message long texts. `class`: class and component descriptions + class documentation. `dataElement`: description and field labels + documentation. `domain`: description and fixed-value texts. Long texts are rendered from SAPscript to plain text. `languages: ["EN","TR"]` checks a fixed set. Text pools (text symbols, selection texts) are not covered. |
+| `adt_auth_check` | Authorization objects an application needs. | `transaction`: start authorization (S_TCODE + SE93/TSTCA) and the SU24 proposal (USOBX_C check indicators + USOBT_C field values). `function`: SU24 (type RF) plus an AUTHORITY-CHECK scan of the module source. `object` + `type` (program, include, class, interface): the source scan alone. The scan is static — INCLUDEs and called modules are not followed. |
 | `adt_value_help` | F4-style value help for a domain, data element or `table` + `field`. | Domain fixed values with texts (DD07L/DD07T), else the check / value table joined with its text table in the requested language (`language`: ISO `EN`/`TR` or SAP key; defaults to the profile language). `includeCheckTable` reads the check table even when fixed values exist. Search helps are not evaluated. Same Data Preview baseline as `adt_read_table`. |
 
 ### Transports

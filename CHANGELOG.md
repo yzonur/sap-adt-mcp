@@ -6,6 +6,39 @@ adheres to semantic versioning once it reaches 1.0.0.
 
 ## [Unreleased]
 
+Six new read-only tools, closing the "nice-to-have" tool list: authorization
+requirements, a code-intelligence pack, translations and a DDIC diff. All of
+them answer from DDIC / basis tables over Data Preview (NetWeaver 7.55+ /
+S/4HANA), validate every name before it reaches a SELECT, and are cached like
+the other read-only tools.
+
+### Added
+
+- **`adt_auth_check`** — authorization objects an application needs. For a
+  transaction: S_TCODE + the SE93 start authorization (TSTCA) and the SU24
+  proposal (USOBX_C check indicators, USOBT_C field values, TOBJT texts). For a
+  function module: SU24 type RF plus a scan of its source. For a program,
+  include, class or interface: every AUTHORITY-CHECK statement with its object,
+  fields and line (literal vs. dynamic values kept apart).
+- **`adt_type_hierarchy`** — superclasses, subclasses, implemented interfaces
+  and an interface's implementers / including interfaces from SEOMETAREL,
+  walked level by level with depth and node caps.
+- **`adt_method_redefinitions`** — the methods a class redefines, and for one
+  method: where it is originally declared, whether this class redefines it,
+  and every subclass that does (SEOREDEF / SEOCOMPO).
+- **`adt_call_hierarchy`** — callers and callees of a method or function module
+  from the where-used index (WBCROSSGT / CROSS). Caller includes are resolved
+  to the calling method (TMDIR, base-36 method include index) or function
+  module (TFDIR).
+- **`adt_translations`** — SE63 lite: the texts of a message class / message,
+  class, data element or domain in every language, with the languages each
+  text is missing in and per-language counts. Message, class and data-element
+  long texts are read from DOKHL/DOKTL (newest version) and rendered from
+  SAPscript to plain text.
+- **`adt_compare_ddic`** — DDIC diff of a table or structure across two
+  systems (or two tables): header, fields and their order, technical settings,
+  secondary indexes and foreign keys. Only differences come back.
+
 ## [0.9.0]
 
 Three new read-only tools that answer questions an agent used to guess at —

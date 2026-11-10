@@ -224,3 +224,15 @@ export function sqlName(value, maxLength = 30) {
   if (name.length === 0 || name.length > maxLength) return null;
   return /^[A-Z0-9_/]+$/.test(name) ? name : null;
 }
+
+// Quote validated names for an IN (...) list.
+export function inList(names) {
+  return names.map((n) => `'${n}'`).join(", ");
+}
+
+// Split a list into chunks so IN (...) lists stay short.
+export function chunk(list, size = 50) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}

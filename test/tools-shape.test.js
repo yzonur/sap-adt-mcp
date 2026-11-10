@@ -20,6 +20,10 @@ import * as rap from "../src/tools/rap.js";
 import * as report from "../src/tools/report.js";
 import * as systemInfo from "../src/tools/system-info.js";
 import * as valueHelp from "../src/tools/value-help.js";
+import * as authCheck from "../src/tools/auth-check.js";
+import * as codeIntel from "../src/tools/code-intel.js";
+import * as translations from "../src/tools/translations.js";
+import * as ddicCompare from "../src/tools/ddic-compare.js";
 
 const MODULES = {
   connection,
@@ -41,6 +45,10 @@ const MODULES = {
   report,
   "system-info": systemInfo,
   "value-help": valueHelp,
+  "auth-check": authCheck,
+  "code-intel": codeIntel,
+  translations,
+  "ddic-compare": ddicCompare,
 };
 
 const fakeCtx = {
