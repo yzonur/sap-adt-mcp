@@ -38,6 +38,10 @@ import * as reportTools from "./tools/report.js";
 import * as debugTools from "./tools/debug.js";
 import * as systemInfoTools from "./tools/system-info.js";
 import * as valueHelpTools from "./tools/value-help.js";
+import * as authCheckTools from "./tools/auth-check.js";
+import * as codeIntelTools from "./tools/code-intel.js";
+import * as translationTools from "./tools/translations.js";
+import * as ddicCompareTools from "./tools/ddic-compare.js";
 
 const PKG = JSON.parse(
   readFileSync(
@@ -133,6 +137,10 @@ const TOOL_MODULES = [
   debugTools,
   systemInfoTools,
   valueHelpTools,
+  authCheckTools,
+  codeIntelTools,
+  translationTools,
+  ddicCompareTools,
 ];
 
 const tools = [];

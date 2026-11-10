@@ -47,6 +47,14 @@ export function sapLanguage(lang) {
   return "E";
 }
 
+const SAP_TO_ISO = Object.fromEntries(Object.entries(ISO_TO_SAP).map(([iso, sap]) => [sap, iso]));
+
+// The reverse of sapLanguage(): SAP key "T" → "TR". Keys outside the table are
+// returned unchanged.
+export function isoLanguage(key) {
+  return SAP_TO_ISO[key] ?? key;
+}
+
 // Merge DD07L (values) with DD07T (texts) by VALPOS. Texts in the requested
 // language win; English fills the gaps so a value never comes back unlabeled
 // just because it lacks a translation.

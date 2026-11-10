@@ -17,6 +17,12 @@ export const CACHEABLE_TOOLS = new Set([
   "adt_where_used",
   "adt_system_info",
   "adt_value_help",
+  "adt_auth_check",
+  "adt_type_hierarchy",
+  "adt_method_redefinitions",
+  "adt_call_hierarchy",
+  "adt_translations",
+  "adt_compare_ddic",
 ]);
 
 export const DEFAULT_TTL_MS = 60_000;
